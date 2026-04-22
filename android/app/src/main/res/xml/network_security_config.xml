@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Configuration pour permettre le trafic HTTPS -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <!-- Faire confiance aux certificats système -->
+            <certificates src="system" />
+            <!-- Faire confiance aux certificats utilisateur (pour debug) -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Configuration spécifique pour le domaine de l'API -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">dev-mombongo.asdc-rdc.org</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
