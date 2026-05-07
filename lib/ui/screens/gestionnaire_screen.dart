@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
+import 'package:mombongo/ui/screens/finance/rapports_financiers_screen.dart';
 import 'package:mombongo/ui/screens/stock/stock_management_screen.dart';
 import 'package:mombongo/ui/screens/vente/sale_report_screen.dart';
 import 'package:mombongo/ui/screens/vente/vente_synthese_screen.dart';
-import 'package:mombongo/ui/screens/finance/rapports_financiers_screen.dart';
 import '../../services/service_locator.dart';
 import 'profil_screen.dart';
 import 'gestionnaire/caissier_performance_screen.dart';
@@ -13,6 +13,7 @@ import 'charge/site_charges_screen.dart';
 import 'caissier/dettes_screen.dart';
 import 'caissier/paiements_screen.dart';
 import 'finance/paiement_dashboard_screen.dart';
+import 'gestionnaire/clients_site_screen.dart';
 
 class GestionnaireScreen extends StatefulWidget {
   const GestionnaireScreen({super.key});
@@ -68,11 +69,26 @@ class _GestionnaireScreenState extends State<GestionnaireScreen> {
       if (!mounted) return;
 
       // Fusionner les données
+      final remboursementsData =
+          dashboardData['remboursements'] ??
+          dashboardData['remboursement'] ??
+          <String, dynamic>{};
+      dashboardData['remboursements'] = {
+        'nombreCommandes': remboursementsData['nombreCommandes'] ?? 0,
+        'montantTotal': remboursementsData['montantTotal'] ?? 0,
+        'montantPaye': remboursementsData['montantPaye'] ?? 0,
+        'resteAPayer': remboursementsData['resteAPayer'] ?? 0,
+        'quantiteTotale': remboursementsData['quantiteTotale'] ?? 0,
+      };
+
       if (paiementsData.isNotEmpty) {
         dashboardData['paiements'] = {
           'nombreTotalPaiements': paiementsData['totalGeneral'] ?? 0,
           'montantTotalPaiements': paiementsData['totalGeneral'] ?? 0.0,
-          'totauxParType': paiementsData['totauxParType'] ?? [],
+          'paiementsParType':
+              paiementsData['paiementsParType'] ??
+              paiementsData['totauxParType'] ??
+              [],
         };
       }
 
@@ -371,15 +387,15 @@ class _GestionnaireScreenState extends State<GestionnaireScreen> {
                         Expanded(
                           child: _buildQuickActionButton(
                             context: context,
-                            title: 'Rapports Financiers',
-                            icon: Icons.account_balance,
+                            title: 'Clients',
+                            icon: Icons.group,
                             color: Colors.teal,
                             onTap: () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) =>
-                                      const RapportsFinanciersScreen(),
+                                      const ClientsSiteScreen(),
                                 ),
                               );
                             },
@@ -555,6 +571,85 @@ class _GestionnaireScreenState extends State<GestionnaireScreen> {
                       ),
                       icon: Icons.account_balance_wallet,
                       color: Colors.indigo,
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Stats Remboursements
+                    const Text(
+                      'Remboursements',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2C3E50),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildStatCard(
+                            title: 'Commandes',
+                            value:
+                                '${_parseInt(_dashboardData?['remboursements']?['nombreCommandes'])}',
+                            icon: Icons.receipt_long,
+                            color: Colors.deepPurple,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildStatCard(
+                            title: 'Montant total',
+                            value: _formatCurrency(
+                              _parseDouble(
+                                _dashboardData?['remboursements']?['montantTotal'],
+                              ),
+                            ),
+                            icon: Icons.account_balance_wallet,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildStatCard(
+                            title: 'Montant paye',
+                            value: _formatCurrency(
+                              _parseDouble(
+                                _dashboardData?['remboursements']?['montantPaye'],
+                              ),
+                            ),
+                            icon: Icons.payments,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildStatCard(
+                            title: 'Reste a payer',
+                            value: _formatCurrency(
+                              _parseDouble(
+                                _dashboardData?['remboursements']?['resteAPayer'],
+                              ),
+                            ),
+                            icon: Icons.money_off,
+                            color: Colors.orange,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildStatCard(
+                            title: 'Quantite totale',
+                            value:
+                                '${_parseDouble(_dashboardData?['remboursements']?['quantiteTotale']).toStringAsFixed(0)} unites',
+                            icon: Icons.inventory_2,
+                            color: Colors.blueGrey,
+                          ),
+                        ),
+                      ],
                     ),
 
                     const SizedBox(height: 24),

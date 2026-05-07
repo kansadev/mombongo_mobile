@@ -609,24 +609,6 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    onPressed: () => _annulerVente(vente),
-                    icon: const Icon(Icons.cancel_outlined, size: 18),
-                    label: Text(
-                      'Annuler',
-                      style: GoogleFonts.poppins(fontSize: 12),
-                    ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.red[400],
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),

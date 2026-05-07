@@ -7,7 +7,8 @@ class DettesStatistiquesScreen extends StatefulWidget {
   const DettesStatistiquesScreen({super.key});
 
   @override
-  State<DettesStatistiquesScreen> createState() => _DettesStatistiquesScreenState();
+  State<DettesStatistiquesScreen> createState() =>
+      _DettesStatistiquesScreenState();
 }
 
 class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
@@ -32,9 +33,13 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
       final currentUser = locator.authRepository.currentUser;
       if (currentUser == null) throw Exception('Utilisateur non connecté');
 
-      final idUser = int.tryParse(currentUser.idUtilisateur) ?? 0;
       final idSite = int.tryParse(currentUser.idSite) ?? 0;
       final idSociete = int.tryParse(currentUser.idSociete) ?? 0;
+      final userRole = currentUser.role.toUpperCase();
+      final isGestionnaire = userRole == 'GESTIONNAIRE';
+      final idUser = isGestionnaire
+          ? null
+          : int.tryParse(currentUser.idUtilisateur);
 
       final stats = await locator.apiService.getStatistiquesPaiements(
         idSociete: idSociete,
@@ -84,11 +89,7 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 48,
-                    color: Colors.red[300],
-                  ),
+                  Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
                   const SizedBox(height: 16),
                   Text(
                     'Erreur: $_errorMessage',
@@ -164,7 +165,12 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
     );
   }
 
-  Widget _buildSummaryCard(String title, String value, IconData icon, Color color) {
+  Widget _buildSummaryCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -190,10 +196,7 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
             const SizedBox(height: 12),
             Text(
               title,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
+              style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
             ),
             const SizedBox(height: 4),
             Text(
@@ -212,7 +215,7 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
 
   Widget _buildTypeChart() {
     final parType = _statistiques!['parType'] as Map<String, dynamic>? ?? {};
-    
+
     if (parType.isEmpty) {
       return _buildEmptyCard('Aucune donnée par type');
     }
@@ -251,7 +254,7 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
                     final chartData = entry.value;
                     final value = chartData.value;
                     final color = chartData.color;
-                    
+
                     return PieChartSectionData(
                       color: color,
                       value: value,
@@ -285,7 +288,7 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
 
   Widget _buildModeChart() {
     final parMode = _statistiques!['parMode'] as Map<String, dynamic>? ?? {};
-    
+
     if (parMode.isEmpty) {
       return _buildEmptyCard('Aucune donnée par mode');
     }
@@ -321,7 +324,9 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
               child: BarChart(
                 BarChartData(
                   alignment: BarChartAlignment.spaceAround,
-                  maxY: data.map((d) => d.value).reduce((a, b) => a > b ? a : b) * 1.2,
+                  maxY:
+                      data.map((d) => d.value).reduce((a, b) => a > b ? a : b) *
+                      1.2,
                   barTouchData: BarTouchData(
                     touchTooltipData: BarTouchTooltipData(
                       getTooltipColor: (_) => Colors.grey[800]!,
@@ -343,7 +348,8 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
                       sideTitles: SideTitles(
                         showTitles: true,
                         getTitlesWidget: (value, meta) {
-                          if (value.toInt() >= data.length) return const SizedBox();
+                          if (value.toInt() >= data.length)
+                            return const SizedBox();
                           final chartData = data[value.toInt()];
                           return Padding(
                             padding: const EdgeInsets.only(top: 8),
@@ -373,13 +379,17 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
                         },
                       ),
                     ),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
                   ),
                   borderData: FlBorderData(show: false),
                   barGroups: data.asMap().entries.map((entry) {
                     final chartData = entry.value;
-                    
+
                     return BarChartGroupData(
                       x: entry.key,
                       barRods: [
@@ -387,7 +397,9 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
                           toY: chartData.value,
                           color: chartData.color,
                           width: 20,
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(4),
+                          ),
                         ),
                       ],
                     );
@@ -420,10 +432,7 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
           Expanded(
             child: Text(
               '${chartData.label} (${chartData.count})',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: Colors.grey[700],
-              ),
+              style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[700]),
             ),
           ),
           Text(
@@ -518,11 +527,7 @@ class _Badge extends StatelessWidget {
   final double size;
   final Color borderColor;
 
-  const _Badge(
-    this.text, {
-    required this.size,
-    required this.borderColor,
-  });
+  const _Badge(this.text, {required this.size, required this.borderColor});
 
   @override
   Widget build(BuildContext context) {

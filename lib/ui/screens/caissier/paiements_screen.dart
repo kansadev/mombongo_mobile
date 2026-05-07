@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:intl/intl.dart';
+import 'package:mombongo/ui/screens/caissier/annuler_vente_screen.dart';
 
 class PaiementsScreen extends StatefulWidget {
   const PaiementsScreen({super.key});
@@ -306,6 +307,42 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
     return filters.isNotEmpty ? 'Filtres actifs: ${filters.join(", ")}' : '';
   }
 
+  Future<void> _annulerVenteFromPaiement(Map<String, dynamic> paiement) async {
+    final commande = paiement['commande'] as Map<String, dynamic>?;
+    final idCommande =
+        int.tryParse(paiement['idCommande']?.toString() ?? '') ??
+        int.tryParse(commande?['idCommande']?.toString() ?? '');
+    if (idCommande == null || idCommande == 0) return;
+
+    final venteForAnnulation = <String, dynamic>{
+      'idCommande': idCommande,
+      'libelle': commande?['libelle']?.toString() ?? 'Commande #$idCommande',
+      'quantite':
+          int.tryParse(commande?['quantite']?.toString() ?? '') ??
+          int.tryParse(paiement['quantite']?.toString() ?? '') ??
+          0,
+      'total':
+          double.tryParse(commande?['montantTotal']?.toString() ?? '') ??
+          double.tryParse(paiement['montant']?.toString() ?? '') ??
+          0.0,
+      'prixUnitaire':
+          double.tryParse(commande?['prixUnitaire']?.toString() ?? '') ??
+          double.tryParse(paiement['montant']?.toString() ?? '') ??
+          0.0,
+    };
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AnnulerVenteScreen(vente: venteForAnnulation),
+      ),
+    );
+
+    if (result == true && mounted) {
+      _loadPaiements();
+    }
+  }
+
   Widget _buildPaiementCard(Map<String, dynamic> paiement) {
     final montant =
         double.tryParse(paiement['montant']?.toString() ?? '0') ?? 0;
@@ -317,6 +354,13 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
         '-';
     final date = _formatDate(paiement['datePaiement']?.toString());
     final typeTransaction = paiement['typeTransaction']?.toString() ?? '0';
+    final normalizedStatut = statut.toUpperCase();
+    final isAnnuleOuRembourse =
+        normalizedStatut == 'ANNULE' ||
+        normalizedStatut == 'ANNULÉE' ||
+        normalizedStatut == 'ANNULEE' ||
+        normalizedStatut == 'REMBOURSÉ' ||
+        normalizedStatut == 'REMBOURSE';
 
     final commande = paiement['commande'] as Map<String, dynamic>?;
     final montantTotal =
@@ -332,16 +376,19 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
     final telephoneClient = client?['telephone']?.toString() ?? '';
     final nomCompletClient = '$nomClient $prenomClient'.trim();
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          // Action quand on clique sur la carte
-        },
-        child: Padding(
+    return Opacity(
+      opacity: isAnnuleOuRembourse ? 0.6 : 1.0,
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        elevation: 3,
+        color: isAnnuleOuRembourse ? Colors.grey[200] : null,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            // Action quand on clique sur la carte
+          },
+          child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -532,9 +579,31 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
                   ),
                 ),
               ],
+              if ((paiement['idCommande'] != null || commande != null) &&
+                  !isAnnuleOuRembourse) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => _annulerVenteFromPaiement(paiement),
+                      icon: const Icon(Icons.cancel_outlined, size: 18),
+                      label: Text(
+                        'Annuler',
+                        style: GoogleFonts.poppins(fontSize: 12),
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.red[400],
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
+      ),
       ),
     );
   }

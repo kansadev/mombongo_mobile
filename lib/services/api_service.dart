@@ -10,7 +10,7 @@ class ApiService {
   // URLs des environnements
   static const String _baseUrlTest = 'https://test-mombongo.asdc-rdc.org';
   static const String _baseUrlDev = 'https://dev-mombongo.asdc-rdc.org';
-  static const String _baseUrlProd = 'https://mombongo.cargo-golden.online';
+  static const String _baseUrlProd = 'https://prod-mombongo.asdc-rdc.org';
 
   // Environment selection: 0 = Test, 1 = Dev, 2 = Prod
   static const int environment =
@@ -1314,6 +1314,45 @@ class ApiService {
     );
   }
 
+  Future<Map<String, dynamic>> getVentesAnnulees({
+    required int idSite,
+    int? idUtilisateur,
+    DateTime? dateDebut,
+    DateTime? dateFin,
+    int page = 1,
+    int pageSize = 5,
+  }) async {
+    final queryParams = <String, String>{
+      'idSite': idSite.toString(),
+      'page': page.toString(),
+      'pageSize': pageSize.toString(),
+      if (idUtilisateur != null) 'idUtilisateur': idUtilisateur.toString(),
+      if (dateDebut != null) 'dateDebut': dateDebut.toIso8601String(),
+      if (dateFin != null) 'dateFin': dateFin.toIso8601String(),
+    };
+
+    final url = Uri.parse(
+      '$baseUrl/api/Vente/annulees',
+    ).replace(queryParameters: queryParams);
+
+    final response = await _handleRequest(
+      () => http.get(url, headers: _getHeaders()),
+    );
+
+    return response is Map<String, dynamic>
+        ? response
+        : <String, dynamic>{
+            'filtres': {'idSite': idSite},
+            'pagination': {
+              'page': page,
+              'pageSize': pageSize,
+              'totalCount': 0,
+              'totalPages': 1,
+            },
+            'ventes': <dynamic>[],
+          };
+  }
+
   Future<Map<String, dynamic>> getClientById(int idClient) async {
     final url = Uri.parse('$baseUrl/api/Clients/$idClient');
     final response = await _handleRequest(
@@ -1332,6 +1371,40 @@ class ApiService {
       return List<dynamic>.from(response['data']);
     }
     return response is List ? response : [];
+  }
+
+  Future<Map<String, dynamic>> getPaiementsByClient(
+    int idClient, {
+    int pageNumber = 1,
+    int pageSize = 15,
+    DateTime? dateDebut,
+    DateTime? dateFin,
+  }) async {
+    final queryParams = <String, String>{
+      'pageNumber': pageNumber.toString(),
+      'pageSize': pageSize.toString(),
+      if (dateDebut != null) 'dateDebut': dateDebut.toIso8601String(),
+      if (dateFin != null) 'dateFin': dateFin.toIso8601String(),
+    };
+
+    final url = Uri.parse(
+      '$baseUrl/api/Paiements/client/$idClient',
+    ).replace(queryParameters: queryParams);
+
+    final response = await _handleRequest(
+      () => http.get(url, headers: _getHeaders()),
+    );
+
+    if (response is Map && response.containsKey('data')) {
+      return Map<String, dynamic>.from(response);
+    }
+    return <String, dynamic>{
+      'data': response is List ? response : [],
+      'pageNumber': 1,
+      'pageSize': pageSize,
+      'totalCount': 0,
+      'totalPages': 1,
+    };
   }
 
   Future<Map<String, dynamic>> getPaiementsDashboard({

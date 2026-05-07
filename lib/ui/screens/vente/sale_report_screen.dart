@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/profil_screen.dart';
+import 'package:mombongo/ui/screens/vente/ventes_annulees_screen.dart';
 
 class RapportsVenteScreen extends StatefulWidget {
   const RapportsVenteScreen({super.key});
@@ -33,6 +34,7 @@ class _RapportsVenteScreenState extends State<RapportsVenteScreen> {
   final TextEditingController _dateFinController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _showFilters = true;
 
   @override
   void initState() {
@@ -299,6 +301,28 @@ class _RapportsVenteScreenState extends State<RapportsVenteScreen> {
     _applyDateFilters(); // Réappliquer les filtres (sans filtres = toutes les données)
   }
 
+  void _onMenuAction(String value) {
+    switch (value) {
+      case 'toggle_filters':
+        setState(() {
+          _showFilters = !_showFilters;
+        });
+        break;
+      case 'profil':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const ProfilScreen()),
+        );
+        break;
+      case 'remboursements':
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const VentesAnnuleesScreen()),
+        );
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -310,27 +334,26 @@ class _RapportsVenteScreenState extends State<RapportsVenteScreen> {
         elevation: 0,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ProfilScreen()),
-              );
-            },
-            icon: CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.white,
-              child: Text(
-                _getUserInitials(
-                  locator.authRepository.currentUser?.nomComplet ?? '',
-                ),
-                style: const TextStyle(
-                  color: Color(0xFF2C3E50),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+          PopupMenuButton<String>(
+            onSelected: _onMenuAction,
+            tooltip: 'Menu',
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                value: 'toggle_filters',
+                child: Text(
+                  _showFilters ? 'Masquer les filtres' : 'Afficher les filtres',
                 ),
               ),
-            ),
+              const PopupMenuItem<String>(
+                value: 'profil',
+                child: Text('Profil utilisateur'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'remboursements',
+                child: Text('Remboursements'),
+              ),
+            ],
+            icon: const Icon(Icons.more_vert, color: Colors.white),
           ),
         ],
       ),
@@ -338,114 +361,116 @@ class _RapportsVenteScreenState extends State<RapportsVenteScreen> {
         onRefresh: () => _loadSales(page: _currentPage),
         child: Column(
           children: [
-            // Filtres
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.white,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Barre de recherche
-                  TextField(
-                    controller: _searchController,
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value;
-                        _currentPage = 1;
-                      });
-                      _applyDateFilters();
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'Rechercher un article...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {
-                                  _searchQuery = '';
-                                  _currentPage = 1;
-                                });
-                                _applyDateFilters();
-                              },
-                            )
-                          : null,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+            if (_showFilters) ...[
+              // Filtres
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.white,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Barre de recherche
+                    TextField(
+                      controller: _searchController,
+                      onChanged: (value) {
+                        setState(() {
+                          _searchQuery = value;
+                          _currentPage = 1;
+                        });
+                        _applyDateFilters();
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Rechercher un article...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {
+                                    _searchQuery = '';
+                                    _currentPage = 1;
+                                  });
+                                  _applyDateFilters();
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(Icons.filter_list, color: Color(0xFF2C3E50)),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Filtrer par date',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF2C3E50),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.filter_list, color: Color(0xFF2C3E50)),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Filtrer par date',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF2C3E50),
+                          ),
                         ),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: _clearFilters,
-                        child: const Text('Effacer'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _dateDebutController,
-                          readOnly: true,
-                          onTap: () => _selectDateDebut(context),
-                          decoration: InputDecoration(
-                            labelText: 'Date début',
-                            prefixIcon: const Icon(Icons.calendar_today),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
+                        const Spacer(),
+                        TextButton(
+                          onPressed: _clearFilters,
+                          child: const Text('Effacer'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _dateDebutController,
+                            readOnly: true,
+                            onTap: () => _selectDateDebut(context),
+                            decoration: InputDecoration(
+                              labelText: 'Date début',
+                              prefixIcon: const Icon(Icons.calendar_today),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: TextField(
-                          controller: _dateFinController,
-                          readOnly: true,
-                          onTap: () => _selectDateFin(context),
-                          decoration: InputDecoration(
-                            labelText: 'Date fin',
-                            prefixIcon: const Icon(Icons.calendar_today),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextField(
+                            controller: _dateFinController,
+                            readOnly: true,
+                            onTap: () => _selectDateFin(context),
+                            decoration: InputDecoration(
+                              labelText: 'Date fin',
+                              prefixIcon: const Icon(Icons.calendar_today),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const Divider(height: 1),
+              const Divider(height: 1),
+            ],
             // Contenu principal
             Expanded(
               child: _isLoading
