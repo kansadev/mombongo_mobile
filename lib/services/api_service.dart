@@ -1202,23 +1202,111 @@ class ApiService {
     return response is List ? response : [];
   }
 
-  Future<List<dynamic>> getPaiementsByCaissier(int idCaissier) async {
-    final url = Uri.parse('$baseUrl/api/Paiements/caissier/$idCaissier');
+  /// GET /api/Paiements/caissier/{id} — pagination (PageNumber, PageSize, MaxPageSize).
+  /// [sortDescending] : `true` (défaut) = date de paiement décroissante ; `false` = croissante.
+  Future<Map<String, dynamic>> getPaiementsByCaissier(
+    int idCaissier, {
+    int pageNumber = 1,
+    int pageSize = 20,
+    int? maxPageSize,
+    bool sortDescending = true,
+  }) async {
+    final queryParams = <String, String>{
+      'PageNumber': pageNumber.toString(),
+      'PageSize': pageSize.toString(),
+      'SortDescending': sortDescending.toString(),
+      if (maxPageSize != null) 'MaxPageSize': maxPageSize.toString(),
+    };
+
+    final url = Uri.parse(
+      '$baseUrl/api/Paiements/caissier/$idCaissier',
+    ).replace(queryParameters: queryParams);
+
     final response = await _handleRequest(
       () => http.get(url, headers: _getHeaders()),
     );
-    // Handle response format: { "paiements": [...] }, { "data": [...] } or direct list
+
     if (response is Map) {
-      if (response.containsKey('paiements')) {
-        final paiements = response['paiements'];
-        return paiements is List ? paiements : [];
+      final map = Map<String, dynamic>.from(response);
+      // Compat : anciennes réponses { paiements: [...] }
+      if (!map.containsKey('data') && map.containsKey('paiements')) {
+        map['data'] = map['paiements'];
       }
-      if (response.containsKey('data')) {
-        final data = response['data'];
-        return data is List ? data : [];
-      }
+      return map;
     }
-    return response is List ? response : [];
+    if (response is List) {
+      return {
+        'data': response,
+        'pageNumber': pageNumber,
+        'pageSize': pageSize,
+        'totalCount': response.length,
+        'totalPages': 1,
+        'hasPreviousPage': false,
+        'hasNextPage': false,
+      };
+    }
+    return {
+      'data': <dynamic>[],
+      'pageNumber': pageNumber,
+      'pageSize': pageSize,
+      'totalCount': 0,
+      'totalPages': 0,
+      'hasPreviousPage': false,
+      'hasNextPage': false,
+    };
+  }
+
+  /// GET /api/Paiements/site/{id} — paiements du site (gestionnaire).
+  /// [sortDescending] : `true` (défaut) = date de paiement décroissante ; `false` = croissante.
+  Future<Map<String, dynamic>> getPaiementsBySite(
+    int idSite, {
+    int pageNumber = 1,
+    int pageSize = 20,
+    int? maxPageSize,
+    bool sortDescending = true,
+  }) async {
+    final queryParams = <String, String>{
+      'PageNumber': pageNumber.toString(),
+      'PageSize': pageSize.toString(),
+      'SortDescending': sortDescending.toString(),
+      if (maxPageSize != null) 'MaxPageSize': maxPageSize.toString(),
+    };
+
+    final url = Uri.parse(
+      '$baseUrl/api/Paiements/site/$idSite',
+    ).replace(queryParameters: queryParams);
+
+    final response = await _handleRequest(
+      () => http.get(url, headers: _getHeaders()),
+    );
+
+    if (response is Map) {
+      final map = Map<String, dynamic>.from(response);
+      if (!map.containsKey('data') && map.containsKey('paiements')) {
+        map['data'] = map['paiements'];
+      }
+      return map;
+    }
+    if (response is List) {
+      return {
+        'data': response,
+        'pageNumber': pageNumber,
+        'pageSize': pageSize,
+        'totalCount': response.length,
+        'totalPages': 1,
+        'hasPreviousPage': false,
+        'hasNextPage': false,
+      };
+    }
+    return {
+      'data': <dynamic>[],
+      'pageNumber': pageNumber,
+      'pageSize': pageSize,
+      'totalCount': 0,
+      'totalPages': 0,
+      'hasPreviousPage': false,
+      'hasNextPage': false,
+    };
   }
 
   Future<Map<String, dynamic>> getAvanceAcompte({
@@ -1284,6 +1372,15 @@ class ApiService {
     return response is Map ? Map<String, dynamic>.from(response) : {};
   }
 
+  Future<Map<String, dynamic>> getCommandeDetail(int idCommande) async {
+    final url = Uri.parse('$baseUrl/api/Commande/$idCommande/detail');
+    final response = await _handleRequest(
+      () => http.get(url, headers: _getHeaders()),
+    );
+
+    return response is Map ? Map<String, dynamic>.from(response) : {};
+  }
+
   Future<Map<String, dynamic>> annulerVente({
     required int idCommande,
     required String motif,
@@ -1307,6 +1404,42 @@ class ApiService {
       'rembourserStock': RembourserStock,
       'annulerPaiement': annulerPaiement,
       if (commentaire != null) 'commentaire': commentaire,
+    });
+
+    return await _handleRequest(
+      () => http.post(url, headers: _getHeaders(), body: body),
+    );
+  }
+
+  Future<Map<String, dynamic>> retirerProduitVente({
+    required int idCommande,
+    required int idStock,
+    required int idUtilisateur,
+  }) async {
+    final url = Uri.parse('$baseUrl/api/Vente/retirer-produit');
+    final body = json.encode({
+      'idCommande': idCommande,
+      'idStock': idStock,
+      'idUtilisateur': idUtilisateur,
+    });
+
+    return await _handleRequest(
+      () => http.post(url, headers: _getHeaders(), body: body),
+    );
+  }
+
+  Future<Map<String, dynamic>> reduireQuantiteProduitVente({
+    required int idCommande,
+    required int idStock,
+    required int nouvelleQuantite,
+    required int idUtilisateur,
+  }) async {
+    final url = Uri.parse('$baseUrl/api/Vente/reduire-quantite');
+    final body = json.encode({
+      'idCommande': idCommande,
+      'idStock': idStock,
+      'nouvelleQuantite': nouvelleQuantite,
+      'idUtilisateur': idUtilisateur,
     });
 
     return await _handleRequest(

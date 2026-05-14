@@ -696,6 +696,10 @@ class _DetteDetailScreenState extends State<DetteDetailScreen> {
 
     final hasClient = clientNomComplet.isNotEmpty || clientTelephone.isNotEmpty;
 
+    final userRole =
+        locator.authRepository.currentUser?.role.toUpperCase() ?? '';
+    final isGestionnaire = userRole == 'GESTIONNAIRE';
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
@@ -993,22 +997,24 @@ class _DetteDetailScreenState extends State<DetteDetailScreen> {
                   const SizedBox(height: 24),
                   Row(
                     children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _payerDette,
-                          icon: const Icon(Icons.payment),
-                          label: const Text('Payer'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                      if (!isGestionnaire) ...[
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _payerDette,
+                            icon: const Icon(Icons.payment),
+                            label: const Text('Payer'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
+                        const SizedBox(width: 12),
+                      ],
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: () => _genererRecu(null),

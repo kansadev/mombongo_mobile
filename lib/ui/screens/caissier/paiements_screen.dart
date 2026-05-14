@@ -3,6 +3,18 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:intl/intl.dart';
 import 'package:mombongo/ui/screens/caissier/annuler_vente_screen.dart';
+import 'package:mombongo/ui/screens/caissier/commande_detail_screen.dart';
+
+enum _VuePaiements {
+  /// Par défaut : masque annulés et remboursés
+  sansAnnules,
+
+  /// Uniquement annulés / remboursés
+  annulesRembourses,
+
+  /// Tout l'historique
+  tous,
+}
 
 class PaiementsScreen extends StatefulWidget {
   const PaiementsScreen({super.key});
@@ -13,40 +25,135 @@ class PaiementsScreen extends StatefulWidget {
 
 class _PaiementsScreenState extends State<PaiementsScreen> {
   bool _isLoading = true;
+  bool _isLoadingMore = false;
   List<dynamic> _paiements = [];
   List<dynamic> _filteredPaiements = [];
   String _errorMessage = '';
-  String? _selectedStatut;
   String _searchQuery = '';
-  DateTime? _dateDebut;
-  DateTime? _dateFin;
   bool _showSearch = false;
-  bool _showFilters = false;
+  _VuePaiements _vuePaiements = _VuePaiements.sansAnnules;
   final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _dateDebutController = TextEditingController();
-  final TextEditingController _dateFinController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
-  static const List<String> _statutFilters = [
-    'TOUS',
-    'PAYE',
-    'PARTIEL',
-    'EN_ATTENTE',
-    'COMPLETED',
-    'ANNULE',
-  ];
+  /// Caissier : /api/Paiements/caissier/{id} · Gestionnaire : /api/Paiements/site/{id}
+  bool _serverPagination = false;
+  int _currentPage = 1;
+  int _totalPages = 1;
+  final int _pageSize = 20;
+  int _totalCount = 0;
+  bool _hasMorePages = true;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadPaiements();
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _searchController.dispose();
-    _dateDebutController.dispose();
-    _dateFinController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_serverPagination || !_scrollController.hasClients) return;
+    if (_isLoadingMore || !_hasMorePages || _isLoading) return;
+
+    final position = _scrollController.position;
+    // Liste plus courte que l’écran : maxScrollExtent ≈ 0 → on ne peut pas défiler
+    if (position.maxScrollExtent <= 0) return;
+
+    if (position.pixels >= position.maxScrollExtent - 200) {
+      _loadMorePaiements();
+    }
+  }
+
+  int _parsePaginationInt(dynamic v, [int fallback = 0]) {
+    if (v == null) return fallback;
+    if (v is int) return v;
+    if (v is double) return v.round();
+    return int.tryParse(v.toString()) ?? fallback;
+  }
+
+  Future<void> _loadMorePaiements() async {
+    if (!mounted || !_serverPagination || _isLoadingMore || !_hasMorePages) {
+      return;
+    }
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final currentUser = locator.authRepository.currentUser;
+      if (currentUser == null) throw Exception('Utilisateur non connecté');
+
+      final idUser = int.tryParse(currentUser.idUtilisateur) ?? 0;
+      final idSite = int.tryParse(currentUser.idSite) ?? 0;
+      final userRole = currentUser.role.toUpperCase();
+      final isGestionnaire = userRole == 'GESTIONNAIRE';
+
+      final nextPage = _currentPage + 1;
+
+      final Map<String, dynamic> apiResponse;
+      if (isGestionnaire) {
+        if (idSite == 0) throw Exception('Site invalide');
+        apiResponse = await locator.apiService.getPaiementsBySite(
+          idSite,
+          pageNumber: nextPage,
+          pageSize: _pageSize,
+        );
+      } else {
+        apiResponse = await locator.apiService.getPaiementsByCaissier(
+          idUser,
+          pageNumber: nextPage,
+          pageSize: _pageSize,
+        );
+      }
+
+      final data = apiResponse['data'];
+      List<dynamic> newItems = [];
+      if (data is List) {
+        newItems = List<dynamic>.from(data);
+      }
+
+      if (!mounted) return;
+
+      if (newItems.isEmpty) {
+        setState(() {
+          _hasMorePages = false;
+          _isLoadingMore = false;
+        });
+        return;
+      }
+
+      newItems.sort((a, b) {
+        final dateA = a['datePaiement']?.toString() ?? '';
+        final dateB = b['datePaiement']?.toString() ?? '';
+        if (dateA.isEmpty && dateB.isEmpty) return 0;
+        if (dateA.isEmpty) return 1;
+        if (dateB.isEmpty) return -1;
+        return dateB.compareTo(dateA);
+      });
+
+      setState(() {
+        _currentPage = nextPage;
+        _paiements = [..._paiements, ...newItems];
+        _totalPages = _parsePaginationInt(apiResponse['totalPages'], 1);
+        _totalCount = _parsePaginationInt(apiResponse['totalCount'], _paiements.length);
+        final hasNext = apiResponse['hasNextPage'];
+        _hasMorePages = hasNext is bool
+            ? hasNext
+            : nextPage < _totalPages;
+        _isLoadingMore = false;
+      });
+      _applyFilters();
+    } catch (e) {
+      debugPrint('Error loading more paiements: $e');
+      if (!mounted) return;
+      setState(() => _isLoadingMore = false);
+    }
   }
 
   Future<void> _loadPaiements() async {
@@ -64,26 +171,62 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
 
       final userRole = currentUser.role.toUpperCase();
       final isGestionnaire = userRole == 'GESTIONNAIRE';
-      final idSociete = int.tryParse(currentUser.idSociete) ?? 0;
       final idUser = int.tryParse(currentUser.idUtilisateur) ?? 0;
+      final idSite = int.tryParse(currentUser.idSite) ?? 0;
 
-      List<dynamic> response;
+      List<dynamic> allPaiements;
       if (isGestionnaire) {
-        debugPrint('Loading Paiements by societe for gestionnaire: $idSociete');
-        final apiResponse = await locator.apiService.getPaiementsBySociete(
-          idSociete,
+        if (idSite == 0) {
+          throw Exception('Site invalide : impossible de charger les paiements');
+        }
+        _serverPagination = true;
+        debugPrint('Loading Paiements by site for gestionnaire: $idSite (page 1)');
+        _currentPage = 1;
+        _totalPages = 1;
+        _hasMorePages = true;
+
+        final apiResponse = await locator.apiService.getPaiementsBySite(
+          idSite,
+          pageNumber: 1,
+          pageSize: _pageSize,
         );
-        response = apiResponse;
+
+        final data = apiResponse['data'];
+        allPaiements = data is List ? List<dynamic>.from(data) : [];
+
+        _totalPages = _parsePaginationInt(apiResponse['totalPages'], 1);
+        _totalCount = _parsePaginationInt(
+          apiResponse['totalCount'],
+          allPaiements.length,
+        );
+        final hasNext = apiResponse['hasNextPage'];
+        _hasMorePages = hasNext is bool ? hasNext : _currentPage < _totalPages;
+        _currentPage = _parsePaginationInt(apiResponse['pageNumber'], 1);
       } else {
-        debugPrint('Loading Paiements for caissier: $idUser');
+        _serverPagination = true;
+        debugPrint('Loading Paiements for caissier: $idUser (page 1)');
+        _currentPage = 1;
+        _totalPages = 1;
+        _hasMorePages = true;
+
         final apiResponse = await locator.apiService.getPaiementsByCaissier(
           idUser,
+          pageNumber: 1,
+          pageSize: _pageSize,
         );
-        response = apiResponse;
-      }
 
-      // API service already returns List<dynamic>, just use it directly
-      final allPaiements = response;
+        final data = apiResponse['data'];
+        allPaiements = data is List ? List<dynamic>.from(data) : [];
+
+        _totalPages = _parsePaginationInt(apiResponse['totalPages'], 1);
+        _totalCount = _parsePaginationInt(
+          apiResponse['totalCount'],
+          allPaiements.length,
+        );
+        final hasNext = apiResponse['hasNextPage'];
+        _hasMorePages = hasNext is bool ? hasNext : _currentPage < _totalPages;
+        _currentPage = _parsePaginationInt(apiResponse['pageNumber'], 1);
+      }
 
       // Sort by date (most recent first)
       allPaiements.sort((a, b) {
@@ -114,20 +257,24 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
     }
   }
 
+  bool _isPaiementAnnuleOuRembourse(Map<String, dynamic> m) {
+    final s = (m['statut']?.toString() ?? '').toUpperCase().trim();
+    return s.contains('ANNULE') || s.contains('REMBOURS');
+  }
+
   void _applyFilters() {
     setState(() {
-      _filteredPaiements = _paiements.where((paiement) {
-        if (_selectedStatut != null) {
-          final statut = paiement['statut']?.toString() ?? '';
-          if (statut != _selectedStatut) return false;
-        }
+      _filteredPaiements = _paiements.where((raw) {
+        final map = raw is Map<String, dynamic>
+            ? raw
+            : Map<String, dynamic>.from(raw as Map);
 
         if (_searchQuery.isNotEmpty) {
           final reference =
-              paiement['referencePaiemenet']?.toString() ??
-              paiement['referencePaiement']?.toString() ??
+              map['referencePaiemenet']?.toString() ??
+              map['referencePaiement']?.toString() ??
               '';
-          final mode = paiement['modePaiement']?.toString() ?? '';
+          final mode = map['modePaiement']?.toString() ?? '';
 
           if (!reference.toLowerCase().contains(_searchQuery.toLowerCase()) &&
               !mode.toLowerCase().contains(_searchQuery.toLowerCase())) {
@@ -135,30 +282,16 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
           }
         }
 
-        final datePaiement = paiement['datePaiement']?.toString();
-        if (datePaiement != null) {
-          try {
-            final date = DateTime.parse(datePaiement);
-
-            if (_dateDebut != null && date.isBefore(_dateDebut!)) {
-              return false;
-            }
-            if (_dateFin != null) {
-              final dateFinEndOfDay = DateTime(
-                _dateFin!.year,
-                _dateFin!.month,
-                _dateFin!.day,
-                23,
-                59,
-                59,
-              );
-              if (date.isAfter(dateFinEndOfDay)) {
-                return false;
-              }
-            }
-          } catch (e) {
-            // Ignorer les erreurs de parsing de date
-          }
+        final annuleOuRem = _isPaiementAnnuleOuRembourse(map);
+        switch (_vuePaiements) {
+          case _VuePaiements.sansAnnules:
+            if (annuleOuRem) return false;
+            break;
+          case _VuePaiements.annulesRembourses:
+            if (!annuleOuRem) return false;
+            break;
+          case _VuePaiements.tous:
+            break;
         }
 
         return true;
@@ -166,56 +299,17 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
     });
   }
 
-  void _onStatutFilterChanged(String statut) {
-    setState(() {
-      _selectedStatut = statut == 'TOUS' ? null : statut;
-    });
-    _applyFilters();
-  }
-
-  Future<void> _selectDateDebut(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate:
-          _dateDebut ?? DateTime.now().subtract(const Duration(days: 30)),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null && picked != _dateDebut) {
-      setState(() {
-        _dateDebut = picked;
-        _dateDebutController.text = DateFormat('dd/MM/yyyy').format(picked);
-      });
-      _applyFilters();
-    }
-  }
-
-  Future<void> _selectDateFin(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _dateFin ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null && picked != _dateFin) {
-      setState(() {
-        _dateFin = picked;
-        _dateFinController.text = DateFormat('dd/MM/yyyy').format(picked);
-      });
-      _applyFilters();
-    }
-  }
-
   void _clearFilters() {
     setState(() {
       _searchQuery = '';
       _searchController.clear();
-      _dateDebut = null;
-      _dateFin = null;
-      _dateDebutController.clear();
-      _dateFinController.clear();
-      _selectedStatut = null;
+      _vuePaiements = _VuePaiements.sansAnnules;
     });
+    _applyFilters();
+  }
+
+  void _onVuePaiementsChanged(_VuePaiements vue) {
+    setState(() => _vuePaiements = vue);
     _applyFilters();
   }
 
@@ -286,9 +380,7 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
 
   bool get _hasActiveFilters {
     return _searchQuery.isNotEmpty ||
-        _dateDebut != null ||
-        _dateFin != null ||
-        _selectedStatut != null;
+        _vuePaiements != _VuePaiements.sansAnnules;
   }
 
   String _getActiveFiltersText() {
@@ -297,11 +389,15 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
     if (_searchQuery.isNotEmpty) {
       filters.add('Recherche: "$_searchQuery"');
     }
-    if (_dateDebut != null || _dateFin != null) {
-      filters.add('Période');
-    }
-    if (_selectedStatut != null) {
-      filters.add('Statut: $_selectedStatut');
+    switch (_vuePaiements) {
+      case _VuePaiements.sansAnnules:
+        break;
+      case _VuePaiements.annulesRembourses:
+        filters.add('Vue: annulés / remboursés');
+        break;
+      case _VuePaiements.tous:
+        filters.add('Vue: tous les paiements');
+        break;
     }
 
     return filters.isNotEmpty ? 'Filtres actifs: ${filters.join(", ")}' : '';
@@ -343,6 +439,29 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
     }
   }
 
+  void _openCommandeDetail(Map<String, dynamic> paiement) {
+    final commande = paiement['commande'] as Map<String, dynamic>?;
+    final idFromPaiement = int.tryParse(
+      paiement['idCommande']?.toString() ?? '',
+    );
+    final idFromCmd = int.tryParse(commande?['idCommande']?.toString() ?? '');
+    final idCommande = idFromPaiement ?? idFromCmd ?? 0;
+
+    if (idCommande == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune commande associée à ce paiement')),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => CommandeDetailScreen(idCommande: idCommande),
+      ),
+    );
+  }
+
   Widget _buildPaiementCard(Map<String, dynamic> paiement) {
     final montant =
         double.tryParse(paiement['montant']?.toString() ?? '0') ?? 0;
@@ -354,13 +473,7 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
         '-';
     final date = _formatDate(paiement['datePaiement']?.toString());
     final typeTransaction = paiement['typeTransaction']?.toString() ?? '0';
-    final normalizedStatut = statut.toUpperCase();
-    final isAnnuleOuRembourse =
-        normalizedStatut == 'ANNULE' ||
-        normalizedStatut == 'ANNULÉE' ||
-        normalizedStatut == 'ANNULEE' ||
-        normalizedStatut == 'REMBOURSÉ' ||
-        normalizedStatut == 'REMBOURSE';
+    final isAnnuleOuRembourse = _isPaiementAnnuleOuRembourse(paiement);
 
     final commande = paiement['commande'] as Map<String, dynamic>?;
     final montantTotal =
@@ -385,225 +498,288 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            // Action quand on clique sur la carte
-          },
+          onTap: () => _openCommandeDetail(paiement),
           child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // En-tête avec référence et statut
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          reference,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // En-tête avec référence et statut
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            reference,
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: const Color(0xFF2C3E50),
+                            ),
+                          ),
+                          if (paiement['idCommande'] != null)
+                            Text(
+                              'Commande #${paiement['idCommande']}',
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(statut).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        statut,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _getStatusColor(statut),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // Informations client
+                if (nomCompletClient.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      Icon(Icons.person, size: 16, color: Colors.grey[600]),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          nomCompletClient,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: const Color(0xFF2C3E50),
+                            fontSize: 14,
+                            color: Colors.grey[700],
                           ),
                         ),
-                        if (paiement['idCommande'] != null)
-                          Text(
-                            'Commande #${paiement['idCommande']}',
+                      ),
+                      if (telephoneClient.isNotEmpty) ...[
+                        Icon(Icons.phone, size: 16, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          flex: 1,
+                          child: Text(
+                            telephoneClient,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.poppins(
                               fontSize: 12,
                               color: Colors.grey[600],
                             ),
                           ),
+                        ),
                       ],
-                    ),
+                    ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(statut).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      statut,
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: _getStatusColor(statut),
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 8),
                 ],
-              ),
 
-              const SizedBox(height: 12),
-
-              // Informations client
-              if (nomCompletClient.isNotEmpty) ...[
+                // Mode de paiement et montant
                 Row(
                   children: [
-                    Icon(Icons.person, size: 16, color: Colors.grey[600]),
-                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: _getModeColor(mode).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        _getModeIcon(mode),
+                        size: 20,
+                        color: _getModeColor(mode),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        nomCompletClient,
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                    ),
-                    if (telephoneClient.isNotEmpty) ...[
-                      Icon(Icons.phone, size: 16, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        telephoneClient,
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 8),
-              ],
-
-              // Mode de paiement et montant
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: _getModeColor(mode).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      _getModeIcon(mode),
-                      size: 20,
-                      color: _getModeColor(mode),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          mode,
-                          style: GoogleFonts.poppins(
-                            color: _getModeColor(mode),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        Text(
-                          date,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        _formatCurrency(montant),
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF2C3E50),
-                        ),
-                      ),
-                      if (typeTransaction == '2')
-                        Container(
-                          margin: const EdgeInsets.only(top: 4),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            'Paiement',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            mode,
                             style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              color: Colors.blue,
-                              fontWeight: FontWeight.w600,
+                              color: _getModeColor(mode),
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
+                          Text(
+                            date,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          _formatCurrency(montant),
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF2C3E50),
+                          ),
                         ),
-                    ],
-                  ),
-                ],
-              ),
-
-              // Détails financiers si commande associée
-              if (montantTotal > 0) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[200]!),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildFinancialRow(
-                        'Total commande',
-                        montantTotal,
-                        Colors.black,
-                      ),
-                      const SizedBox(height: 4),
-                      _buildFinancialRow(
-                        'Montant payé',
-                        montantPaye,
-                        Colors.green,
-                      ),
-                      const SizedBox(height: 4),
-                      _buildFinancialRow(
-                        'Reste à payer',
-                        resteAPayer,
-                        resteAPayer > 0 ? Colors.red : Colors.green,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              if ((paiement['idCommande'] != null || commande != null) &&
-                  !isAnnuleOuRembourse) ...[
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () => _annulerVenteFromPaiement(paiement),
-                      icon: const Icon(Icons.cancel_outlined, size: 18),
-                      label: Text(
-                        'Annuler',
-                        style: GoogleFonts.poppins(fontSize: 12),
-                      ),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.red[400],
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                      ),
+                        if (typeTransaction == '2')
+                          Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Paiement',
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                color: Colors.blue,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),
+
+                // Détails financiers si commande associée
+                if (montantTotal > 0) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[200]!),
+                    ),
+                    child: Column(
+                      children: [
+                        _buildFinancialRow(
+                          'Total commande',
+                          montantTotal,
+                          Colors.black,
+                        ),
+                        const SizedBox(height: 4),
+                        _buildFinancialRow(
+                          'Montant payé',
+                          montantPaye,
+                          Colors.green,
+                        ),
+                        const SizedBox(height: 4),
+                        _buildFinancialRow(
+                          'Reste à payer',
+                          resteAPayer,
+                          resteAPayer > 0 ? Colors.red : Colors.green,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if ((paiement['idCommande'] != null || commande != null) &&
+                    !isAnnuleOuRembourse) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => _annulerVenteFromPaiement(paiement),
+                        icon: const Icon(Icons.cancel_outlined, size: 18),
+                        label: Text(
+                          'Annuler',
+                          style: GoogleFonts.poppins(fontSize: 12),
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red[400],
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPaginationFooter() {
+    final loaded = _paiements.length;
+    final summary =
+        '$_totalCount au total · pages $_currentPage/$_totalPages · $loaded chargé(s)';
+
+    return Material(
+      elevation: 6,
+      color: Colors.white,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  summary,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: Colors.grey[700],
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (_hasMorePages)
+                TextButton.icon(
+                  onPressed:
+                      _isLoadingMore ? null : () => _loadMorePaiements(),
+                  icon: _isLoadingMore
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: const Color(0xFF2C3E50),
+                          ),
+                        )
+                      : const Icon(Icons.expand_more, size: 20),
+                  label: Text(
+                    _isLoadingMore ? 'Chargement…' : 'Charger la suite',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF2C3E50),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -694,16 +870,6 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
             ),
           if (!_showSearch)
             IconButton(
-              icon: const Icon(Icons.filter_list),
-              tooltip: 'Filtres',
-              onPressed: () {
-                setState(() {
-                  _showFilters = !_showFilters;
-                });
-              },
-            ),
-          if (!_showSearch)
-            IconButton(
               icon: const Icon(Icons.picture_as_pdf),
               tooltip: 'Exporter PDF',
               onPressed: () {
@@ -714,97 +880,8 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
       ),
       body: Column(
         children: [
-          // Section de filtres (affichée conditionnellement)
-          if (_showFilters)
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.white,
-              child: Column(
-                children: [
-                  // Filtres par date
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _dateDebutController,
-                          readOnly: true,
-                          onTap: () => _selectDateDebut(context),
-                          decoration: InputDecoration(
-                            labelText: 'Date début',
-                            prefixIcon: const Icon(Icons.calendar_today),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _dateFinController,
-                          readOnly: true,
-                          onTap: () => _selectDateFin(context),
-                          decoration: InputDecoration(
-                            labelText: 'Date fin',
-                            prefixIcon: const Icon(Icons.calendar_today),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: _clearFilters,
-                        icon: const Icon(Icons.refresh),
-                        tooltip: 'Effacer les filtres',
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Filtres par statut
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: _statutFilters.map((statut) {
-                        final isSelected =
-                            _selectedStatut == statut ||
-                            (_selectedStatut == null && statut == 'TOUS');
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: FilterChip(
-                            label: Text(statut),
-                            selected: isSelected,
-                            onSelected: (selected) {
-                              _onStatutFilterChanged(
-                                selected ? statut : 'TOUS',
-                              );
-                            },
-                            selectedColor: const Color(
-                              0xFF2C3E50,
-                            ).withOpacity(0.1),
-                            checkmarkColor: const Color(0xFF2C3E50),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          // Indicateurs de filtres actifs
-          if (_hasActiveFilters && !_showFilters)
+          // Indicateurs de filtres actifs (recherche / affichage)
+          if (_hasActiveFilters)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: const Color(0xFF2C3E50).withOpacity(0.1),
@@ -840,6 +917,49 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
                 ],
               ),
             ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Affichage',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.grey[700],
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SegmentedButton<_VuePaiements>(
+                  segments: const [
+                    ButtonSegment<_VuePaiements>(
+                      value: _VuePaiements.sansAnnules,
+                      label: Text('Non remboursés'),
+                      tooltip:
+                          'Paiements non annulés et non remboursés (par défaut)',
+                    ),
+                    ButtonSegment<_VuePaiements>(
+                      value: _VuePaiements.annulesRembourses,
+                      label: Text('Remboursés'),
+                      tooltip: 'Uniquement les paiements annulés ou remboursés',
+                    ),
+                    ButtonSegment<_VuePaiements>(
+                      value: _VuePaiements.tous,
+                      label: Text('Tous'),
+                      tooltip: 'Tout l’historique',
+                    ),
+                  ],
+                  selected: {_vuePaiements},
+                  onSelectionChanged: (Set<_VuePaiements> next) {
+                    if (next.isEmpty) return;
+                    _onVuePaiementsChanged(next.first);
+                  },
+                ),
+              ],
+            ),
+          ),
 
           const Divider(height: 1),
 
@@ -902,6 +1022,8 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
                 : RefreshIndicator(
                     onRefresh: _loadPaiements,
                     child: ListView.builder(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.all(16),
                       itemCount: _filteredPaiements.length,
                       itemBuilder: (context, index) {
@@ -913,6 +1035,12 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
                     ),
                   ),
           ),
+
+          if (_serverPagination &&
+              !_isLoading &&
+              _errorMessage.isEmpty &&
+              _paiements.isNotEmpty)
+            _buildPaginationFooter(),
         ],
       ),
     );

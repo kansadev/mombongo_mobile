@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import '../../../services/service_locator.dart';
-import 'annuler_vente_screen.dart';
 
 class SalesJournalScreen extends StatefulWidget {
   const SalesJournalScreen({super.key});
@@ -26,6 +25,7 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
   double _montantTotal = 0.0;
   double _quantiteTotale = 0.0;
   String _sortOrder = 'desc';
+  bool _isActionInProgress = false;
 
   @override
   void initState() {
@@ -179,13 +179,214 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
     }
   }
 
-  Future<void> _annulerVente(Map<String, dynamic> vente) async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => AnnulerVenteScreen(vente: vente)),
+  Future<void> _retirerProduitVente(
+    Map<String, dynamic> vente, {
+    bool showConfirmation = true,
+  }) async {
+    try {
+      final currentUser = locator.authRepository.currentUser;
+      if (currentUser == null) {
+        throw Exception('Utilisateur non connecté');
+      }
+
+      final idCommande = _parseInt(vente['idCommande']);
+      final idStock = _parseInt(vente['idStock']);
+      final idUtilisateur = _parseInt(currentUser.idUtilisateur);
+
+      if (idCommande <= 0 || idStock <= 0 || idUtilisateur <= 0) {
+        throw Exception('Informations de vente invalides (commande/stock)');
+      }
+
+      if (showConfirmation) {
+        final shouldProceed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Retirer le produit'),
+            content: Text(
+              'Confirmer le retrait de "${vente['libelle'] ?? 'cet article'}" '
+              'de la commande #$idCommande ?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Confirmer'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldProceed != true) return;
+      }
+
+      _showLoadingDialog();
+      await locator.apiService.retirerProduitVente(
+        idCommande: idCommande,
+        idStock: idStock,
+        idUtilisateur: idUtilisateur,
+      );
+      _hideLoadingDialog();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Produit retiré avec succès')),
+      );
+      await _loadJournalData();
+    } catch (e) {
+      _hideLoadingDialog();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur lors du retrait: $e')));
+    }
+  }
+
+  Future<void> _reduireQuantiteProduitVente(Map<String, dynamic> vente) async {
+    final quantiteActuelle = _parseInt(vente['quantite']);
+
+    if (quantiteActuelle == 1) {
+      final shouldRemove = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Attention'),
+          content: Text(
+            'La quantité actuelle est 1. '
+            'Réduire cette quantité va retirer le produit '
+            '"${vente['libelle'] ?? ''}" de la commande.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Continuer'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldRemove == true) {
+        await _retirerProduitVente(vente, showConfirmation: false);
+      }
+      return;
+    }
+
+    final controller = TextEditingController(
+      text: quantiteActuelle > 1 ? '${quantiteActuelle - 1}' : '1',
     );
-    if (result == true && mounted) {
-      _loadJournalData();
+
+    try {
+      final nouvelleQuantite = await showDialog<int>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Réduire la quantité'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Nouvelle quantité',
+              hintText: 'Saisir une quantité',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final value = int.tryParse(controller.text.trim());
+                Navigator.pop(context, value);
+              },
+              child: const Text('Valider'),
+            ),
+          ],
+        ),
+      );
+
+      if (nouvelleQuantite == null) return;
+      if (nouvelleQuantite <= 0) {
+        throw Exception('La quantité doit être supérieure à 0');
+      }
+      if (quantiteActuelle > 0 && nouvelleQuantite >= quantiteActuelle) {
+        throw Exception(
+          'La nouvelle quantité doit être inférieure à la quantité actuelle ($quantiteActuelle)',
+        );
+      }
+
+      final currentUser = locator.authRepository.currentUser;
+      if (currentUser == null) {
+        throw Exception('Utilisateur non connecté');
+      }
+
+      final idCommande = _parseInt(vente['idCommande']);
+      final idStock = _parseInt(vente['idStock']);
+      final idUtilisateur = _parseInt(currentUser.idUtilisateur);
+
+      if (idCommande <= 0 || idStock <= 0 || idUtilisateur <= 0) {
+        throw Exception('Informations de vente invalides (commande/stock)');
+      }
+
+      _showLoadingDialog();
+      await locator.apiService.reduireQuantiteProduitVente(
+        idCommande: idCommande,
+        idStock: idStock,
+        nouvelleQuantite: nouvelleQuantite,
+        idUtilisateur: idUtilisateur,
+      );
+      _hideLoadingDialog();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Quantité mise à jour avec succès')),
+      );
+      await _loadJournalData();
+    } catch (e) {
+      _hideLoadingDialog();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors de la réduction: $e')),
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  void _showLoadingDialog() {
+    if (!mounted || _isActionInProgress) return;
+    _isActionInProgress = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 16),
+              Expanded(child: Text('Traitement en cours...')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _hideLoadingDialog() {
+    if (!_isActionInProgress) return;
+    _isActionInProgress = false;
+    if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
     }
   }
 
@@ -504,7 +705,6 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onLongPress: () => _annulerVente(vente),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -553,6 +753,27 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
+                      PopupMenuButton<String>(
+                        tooltip: 'Actions',
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (value) {
+                          if (value == 'retirer') {
+                            _retirerProduitVente(vente);
+                          } else if (value == 'reduire') {
+                            _reduireQuantiteProduitVente(vente);
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem<String>(
+                            value: 'retirer',
+                            child: Text('Retirer le produit'),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'reduire',
+                            child: Text('Reduire la quantite'),
+                          ),
+                        ],
+                      ),
                       Text(
                         _formatCurrency(_parseDouble(vente['total'] ?? 0)),
                         style: GoogleFonts.poppins(

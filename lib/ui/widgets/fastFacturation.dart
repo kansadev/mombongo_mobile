@@ -362,6 +362,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
           : 'Inconnue';
 
       final saleData = {
+        if (_selectedClient != null) 'idClient': _selectedClient!.id,
         'nom': _selectedClient?.nom ?? 'Client',
         'prenom': _selectedClient?.prenom ?? 'Anonyme',
         'genre': _selectedClient?.genre ?? 'M',

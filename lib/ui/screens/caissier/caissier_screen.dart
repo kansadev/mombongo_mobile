@@ -14,6 +14,7 @@ import 'package:mombongo/ui/screens/caissier/paiements_screen.dart';
 import 'package:mombongo/ui/screens/caissier/dettes_screen.dart';
 import 'package:mombongo/ui/screens/caissier/charges_screen.dart';
 import 'package:flutter/services.dart';
+import 'package:mombongo/ui/screens/finance/paiement_dashboard_screen.dart';
 
 class CaissierScreen extends StatefulWidget {
   const CaissierScreen({super.key});
@@ -22,7 +23,8 @@ class CaissierScreen extends StatefulWidget {
   State<CaissierScreen> createState() => _CaissierScreenState();
 }
 
-class _CaissierScreenState extends State<CaissierScreen> with WidgetsBindingObserver {
+class _CaissierScreenState extends State<CaissierScreen>
+    with WidgetsBindingObserver {
   bool _isLoadingDashboard = true;
   Map<String, dynamic>? _dashboardData;
 
@@ -539,7 +541,8 @@ class _CaissierScreenState extends State<CaissierScreen> with WidgetsBindingObse
                               onTap: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => const PaiementsScreen(),
+                                  builder: (context) =>
+                                      const PaiementDashboardScreen(),
                                 ),
                               ),
                             ),

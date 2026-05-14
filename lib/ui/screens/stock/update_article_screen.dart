@@ -41,11 +41,13 @@ class _UpdateArticleScreenState extends State<UpdateArticleScreen> {
   }
 
   void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_searchQuery.isNotEmpty) return;
+    if (_isLoading || _isLoadingMore || !_hasMoreData) return;
+
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
-      if (!_isLoadingMore && _hasMoreData) {
-        _loadMoreStocks();
-      }
+      _loadMoreStocks();
     }
   }
 
@@ -75,6 +77,8 @@ class _UpdateArticleScreenState extends State<UpdateArticleScreen> {
 
         final result = await locator.apiService.getStockArticles(
           idSociete: idSociete,
+          page: 1,
+          pageSize: _pageSize,
         );
         stocks = result.cast<Map<String, dynamic>>();
       } else if (userRole == 'GESTIONNAIRE') {
@@ -86,6 +90,8 @@ class _UpdateArticleScreenState extends State<UpdateArticleScreen> {
 
         final result = await locator.apiService.getStockArticles(
           idSite: idSite,
+          page: 1,
+          pageSize: _pageSize,
         );
         stocks = result.cast<Map<String, dynamic>>();
       } else {
@@ -96,7 +102,7 @@ class _UpdateArticleScreenState extends State<UpdateArticleScreen> {
 
       setState(() {
         _allStocks = List.from(stocks);
-        _stocks = stocks;
+        _stocks = List.from(stocks);
         _currentPage = 1;
         _hasMoreData = stocks.length >= _pageSize;
         _isLoading = false;
@@ -159,7 +165,7 @@ class _UpdateArticleScreenState extends State<UpdateArticleScreen> {
 
       setState(() {
         _allStocks = [..._allStocks, ...moreStocks];
-        _stocks = _searchQuery.isEmpty ? _allStocks : _filteredStocks;
+        _stocks = List.from(_allStocks);
         _currentPage = nextPage;
         _hasMoreData = moreStocks.length >= _pageSize;
         _isLoadingMore = false;

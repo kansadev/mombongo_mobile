@@ -1297,8 +1297,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
         'Address parsed - Province: $province, Ville: $ville, Commune: $commune',
       );
 
-      // Use selected client if available, otherwise use defaults
+      // Use selected client if available, otherwise use defaults.
+      // Toujours envoyer idClient quand connu : évite qu’API fasse un lookup ambigu
+      // (téléphone / nom) qui pourrait lier la vente au mauvais client.
       final saleData = {
+        if (_selectedClient != null) 'idClient': _selectedClient!.id,
         'nom': _selectedClient?.nom ?? 'Client',
         'prenom': _selectedClient?.prenom ?? 'Anonyme',
         'genre': _selectedClient?.genre ?? 'M',
