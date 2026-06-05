@@ -14,6 +14,7 @@ import 'cart_screen.dart';
 import 'package:hive/hive.dart';
 import 'package:mombongo/models/article_data.dart';
 import 'package:mombongo/ui/widgets/fastFacturation.dart';
+import 'package:mombongo/utils/invoice_receipt_helper.dart';
 
 part 'facturation_screen.g.dart';
 
@@ -195,6 +196,14 @@ class _FacturationScreenState extends State<FacturationScreen>
     return fetched;
   }
 
+  Future<bool> _collectServiceDescriptionsBeforeConfirm(
+    BuildContext context,
+    CartService cartService,
+  ) async {
+    await collectOptionalServiceDescriptions(context, cartService);
+    return true;
+  }
+
   Future<void> _openFastSaleSheet({ArticleData? focusArticle}) async {
     if (!_fastSaleEnabled) return;
 
@@ -222,6 +231,7 @@ class _FacturationScreenState extends State<FacturationScreen>
           currencyFormat: _currencyFormat,
           currencySymbol: _currencySymbol,
           initialFocusedArticle: _focusedArticle,
+          beforeConfirmSale: _collectServiceDescriptionsBeforeConfirm,
           onClose: () {
             if (!mounted) return;
             setState(() {
@@ -1255,6 +1265,8 @@ class _FacturationScreenState extends State<FacturationScreen>
                                   article.idArticle,
                                   newQty,
                                 );
+                              } else if (isService) {
+                                cartService.addItem(article, quantity: newQty);
                               } else {
                                 cartService.addItem(article, quantity: newQty);
                               }
@@ -1302,6 +1314,7 @@ class _FacturationScreenState extends State<FacturationScreen>
                     listen: false,
                   );
                   cartService.addItem(article);
+                  if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(

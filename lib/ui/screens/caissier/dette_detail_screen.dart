@@ -27,11 +27,29 @@ class DetteDetailScreen extends StatefulWidget {
 class _DetteDetailScreenState extends State<DetteDetailScreen> {
   bool _isLoading = false;
   Map<String, dynamic>? _clientData;
+  Map<String, dynamic>? _commandeDetail;
 
   @override
   void initState() {
     super.initState();
     _loadClientData();
+    _loadCommandeDetail();
+  }
+
+  Future<void> _loadCommandeDetail() async {
+    final idCommande = int.tryParse(
+      widget.commande?['idCommande']?.toString() ?? '',
+    );
+    if (idCommande == null || idCommande <= 0) return;
+
+    try {
+      final detail = await locator.apiService.getCommandeDetail(idCommande);
+      if (mounted) {
+        setState(() => _commandeDetail = detail);
+      }
+    } catch (e) {
+      debugPrint('Erreur chargement détail commande: $e');
+    }
   }
 
   Future<void> _loadClientData() async {
@@ -247,8 +265,13 @@ class _DetteDetailScreenState extends State<DetteDetailScreen> {
 
   Future<void> _genererRecu(double? montantPaye) async {
     final dette = widget.dette;
-    final commande = widget.commande;
+    final commande = _commandeDetail ?? widget.commande;
     final client = widget.client;
+
+    if (_commandeDetail == null) {
+      await _loadCommandeDetail();
+    }
+    final commandeForPdf = _commandeDetail ?? commande;
 
     showDialog(
       context: context,
@@ -265,7 +288,12 @@ class _DetteDetailScreenState extends State<DetteDetailScreen> {
     );
 
     try {
-      final pdf = await _createRecuPDF(dette, commande, client, montantPaye);
+      final pdf = await _createRecuPDF(
+        dette,
+        commandeForPdf,
+        client,
+        montantPaye,
+      );
 
       if (mounted) {
         Navigator.of(context).pop();
@@ -280,6 +308,56 @@ class _DetteDetailScreenState extends State<DetteDetailScreen> {
         );
       }
     }
+  }
+
+  List<pdfLib.Widget> _buildArticlesSection(Map<String, dynamic>? commande) {
+    final articles = commande?['articles'] as List<dynamic>? ?? [];
+    if (articles.isEmpty) return [];
+
+    return [
+      pdfLib.SizedBox(height: 8),
+      pdfLib.Divider(thickness: 0.5),
+      pdfLib.SizedBox(height: 5),
+      pdfLib.Text(
+        'ARTICLES',
+        style: pdfLib.TextStyle(
+          fontSize: 8,
+          fontWeight: pdfLib.FontWeight.bold,
+        ),
+      ),
+      pdfLib.SizedBox(height: 4),
+      ...articles.map((raw) {
+        final ligne = raw as Map<String, dynamic>;
+        final stock = ligne['stock'] as Map<String, dynamic>?;
+        final article = stock?['article'] as Map<String, dynamic>?;
+        final libelle = article?['libelle']?.toString() ?? 'Article';
+        final description = ligne['description']?.toString().trim();
+        final label = description != null && description.isNotEmpty
+            ? '$libelle ($description)'
+            : libelle;
+        final qte = ligne['quantite']?.toString() ?? '0';
+        final total = locator.tauxService.formatPrice(
+          double.tryParse(ligne['totalLigne']?.toString() ?? '0') ?? 0,
+        );
+
+        return pdfLib.Padding(
+          padding: const pdfLib.EdgeInsets.only(bottom: 3),
+          child: pdfLib.Row(
+            mainAxisAlignment: pdfLib.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pdfLib.CrossAxisAlignment.start,
+            children: [
+              pdfLib.Expanded(
+                child: pdfLib.Text(
+                  '$label x$qte',
+                  style: const pdfLib.TextStyle(fontSize: 7),
+                ),
+              ),
+              pdfLib.Text(total, style: const pdfLib.TextStyle(fontSize: 7)),
+            ],
+          ),
+        );
+      }),
+    ];
   }
 
   Future<pdfLib.Document> _createRecuPDF(
@@ -475,6 +553,8 @@ class _DetteDetailScreenState extends State<DetteDetailScreen> {
                   ),
                 ],
               ),
+
+              ..._buildArticlesSection(commande),
 
               if (montantTotal > 0) ...[
                 pdfLib.SizedBox(height: 8),
@@ -943,6 +1023,85 @@ class _DetteDetailScreenState extends State<DetteDetailScreen> {
                                 ),
                               ],
                             ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  if ((_commandeDetail?['articles'] as List?)?.isNotEmpty ==
+                      true) ...[
+                    const SizedBox(height: 16),
+                    Card(
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Articles',
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: const Color(0xFF2C3E50),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            ...(_commandeDetail!['articles'] as List).map((
+                              raw,
+                            ) {
+                              final ligne = raw as Map<String, dynamic>;
+                              final stock =
+                                  ligne['stock'] as Map<String, dynamic>?;
+                              final article =
+                                  stock?['article'] as Map<String, dynamic>?;
+                              final libelle =
+                                  article?['libelle']?.toString() ?? 'Article';
+                              final description =
+                                  ligne['description']?.toString().trim();
+                              final qte = ligne['quantite']?.toString() ?? '0';
+                              final total = double.tryParse(
+                                    ligne['totalLigne']?.toString() ?? '0',
+                                  ) ??
+                                  0;
+
+                              return ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  libelle,
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                subtitle: description != null &&
+                                        description.isNotEmpty
+                                    ? Text(
+                                        description,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12,
+                                          color: Colors.blueGrey,
+                                        ),
+                                      )
+                                    : Text(
+                                        'Quantité: $qte',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                trailing: Text(
+                                  _formatCurrency(total),
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green[700],
+                                  ),
+                                ),
+                              );
+                            }),
                           ],
                         ),
                       ),

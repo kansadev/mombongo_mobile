@@ -11,6 +11,8 @@ import 'package:mombongo/ui/screens/caissier/create_client_screen.dart';
 import 'package:mombongo/models/article_data.dart';
 import 'package:mombongo/ui/widgets/invoice_generator.dart';
 import 'package:provider/provider.dart';
+import 'package:mombongo/utils/invoice_receipt_helper.dart';
+import 'package:mombongo/utils/ligne_commande_mapper.dart';
 
 class FastSaleBottomSheet extends StatefulWidget {
   final NumberFormat currencyFormat;
@@ -18,6 +20,8 @@ class FastSaleBottomSheet extends StatefulWidget {
   final ArticleData? initialFocusedArticle;
   final VoidCallback onClose;
   final VoidCallback? onSaleCompleted;
+  final Future<bool> Function(BuildContext context, CartService cartService)?
+      beforeConfirmSale;
 
   const FastSaleBottomSheet({
     super.key,
@@ -26,6 +30,7 @@ class FastSaleBottomSheet extends StatefulWidget {
     required this.initialFocusedArticle,
     required this.onClose,
     this.onSaleCompleted,
+    this.beforeConfirmSale,
   });
 
   @override
@@ -327,6 +332,14 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
       return;
     }
 
+    if (widget.beforeConfirmSale != null) {
+      final descriptionsOk = await widget.beforeConfirmSale!(
+        context,
+        cartService,
+      );
+      if (!descriptionsOk || !mounted) return;
+    }
+
     if (isPartialPayment) {
       // allow a deposit; user will pay the remainder later
       ScaffoldMessenger.of(context).showSnackBar(
@@ -397,18 +410,16 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
         // use same defaults as sample request
         'typeTransaction': resolvedTypeTransaction,
         'catalogueId': int.tryParse('0')?.toString(),
-        'lignesCommandes': cartService.items
-            .map(
-              (item) => {
-                'idStock': item.article.idStock,
-                'quantite': item.quantity,
-                'prixUnitaire': item.unitPrice,
-                'tva': item.article.tva,
-                'remise': item.discountPercentage,
-              },
-            )
-            .toList(),
       };
+
+      final invoiceItems = snapshotCartItemsForReceipt(cartService);
+      for (final item in invoiceItems) {
+        debugPrint(
+          '[Receipt] Snapshot "${item.article.libelle}" '
+          'desc="${item.description ?? ''}" service=${item.isService}',
+        );
+      }
+      saleData['lignesCommandes'] = cartItemsToLignesCommandes(invoiceItems);
 
       print('Sale data prepared: ${saleData.keys}');
       print('saleData JSON: ${jsonEncode(saleData)}');
@@ -422,6 +433,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
           saleResponse: response,
           invoiceNumber: saleInvoiceNumber,
           paidAmountOverride: paidAmount,
+          invoiceItems: invoiceItems,
         );
         await invoice.generateAndShow();
       }

@@ -1,0 +1,31 @@
+TODO LIST – Correctifs & Nouvelles Fonctionnalités
+Correctifs à effectuer
+1.	Ajouter la possibilité d’imprimer la facture après le retrait d’un article, ainsi que la réimpression d’une facture déjà payée.
+2.	Après le retrait d’un article, le Dashboard des remboursements doit être mis à jour correctement.
+3.	Ajouter les articles dans la facture de dette.
+4.	Ajouter les articles dans la facture client.
+5.	Modifier automatiquement les statuts lorsque les articles sont retirés.
+6.	Corriger l’erreur “Reste à payer” lorsqu’on retire tous les articles d’une facture.
+7.	Ajouter le nom de l’article dans la facture de retrait.
+8.	Ajouter la possibilité de réimprimer :
+o	les factures normales ;
+o	les factures de retrait.
+9.	Ajouter la synthèse des ventes :
+o	Grouper les produits avec leurs quantités vendues.
+o	Endpoint Gestionnaire :
+GET /api/V_JournalVenteParSite/synthèse/article
+o	Endpoint Caissier :
+GET /api/V_JournalVenteParSite/synthèse/article/caissier/{id}
+10.	Ajouter la description des services (Pressing)
+11.	Filtrer le Dashboard de paiement caissier par IdCaissier.
+12.	Dans le module Dette, le bouton “Imprimer” fonctionne, mais les articles endettés ne s’affichent pas dans la facture.
+________________________________________
+Nouvelles fonctionnalités incluses dans ce build
+•	Gestion des remboursements liés aux retraits/réductions dans les Dashboards Paiement et Remboursement.
+•	Synthèse des articles par caissier :
+o	Endpoint :
+GET /api/V_JournalVenteParSite/synthèse/article?idUtilisateur=...
+•	Route dédiée pour les caissiers :
+o	Endpoint :
+GET /api/V_JournalVenteParSite/synthese/article/caissier/{idUtilisateur}
+

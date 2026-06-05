@@ -538,13 +538,18 @@ class _CaissierScreenState extends State<CaissierScreen>
                               title: 'Paiements',
                               subtitle: 'Gérer',
                               color: Colors.teal,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      const PaiementDashboardScreen(),
-                                ),
-                              ),
+                              onTap: () async {
+                                final changed = await Navigator.push<bool>(
+                                  context,
+                                  MaterialPageRoute<bool>(
+                                    builder: (context) =>
+                                        const PaiementDashboardScreen(),
+                                  ),
+                                );
+                                if (changed == true && mounted) {
+                                  _loadDashboardData();
+                                }
+                              },
                             ),
                             _buildActionCard(
                               icon: Icons.account_balance_wallet,

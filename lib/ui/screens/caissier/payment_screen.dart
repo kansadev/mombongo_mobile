@@ -14,6 +14,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pdfLib;
 import 'package:printing/printing.dart';
 import 'dart:convert';
+import 'package:mombongo/utils/invoice_receipt_helper.dart';
+import 'package:mombongo/utils/ligne_commande_mapper.dart';
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -351,8 +353,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     BuildContext context,
     dynamic saleResponse,
     CartService cartService,
-    Client? selectedClient,
-  ) async {
+    Client? selectedClient, {
+    List<CartItem>? invoiceItems,
+  }) async {
     print('=== DEBUT GENERATION FACTURE ===');
     print('Sale Response: $saleResponse');
     print('Cart items count: ${cartService.items.length}');
@@ -388,6 +391,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         saleResponse,
         cartService,
         selectedClient,
+        invoiceItems: invoiceItems,
       );
       print('PDF created successfully');
 
@@ -434,8 +438,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<pdfLib.Document> _createInvoicePDF(
     dynamic saleResponse,
     CartService cartService,
-    Client? selectedClient,
-  ) async {
+    Client? selectedClient, {
+    List<CartItem>? invoiceItems,
+  }) async {
     print('=== DEBUT CREATION PDF ===');
     print('Sale response type: ${saleResponse.runtimeType}');
     print('Sale response: $saleResponse');
@@ -472,13 +477,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 _buildInvoiceInfo(saleResponse, currentUser),
 
                 // Section détails articles (aligné à gauche)
-                _buildItemsTable(cartService),
+                _buildItemsTable(
+                  invoiceItems ?? cartService.items,
+                ),
 
                 // Section totaux (aligné à gauche)
                 _buildInvoiceSummary(cartService),
 
                 // Section paiement (aligné à gauche)
                 _buildPaymentInfo(saleResponse, cartService, selectedClient),
+
+                buildPdfServiceDescriptionsBlock(
+                  collectServiceDescriptionsForReceipt(
+                    invoiceItems ?? cartService.items,
+                  ),
+                ),
 
                 // Footer avec message (centré)
                 _buildInvoiceFooter(),
@@ -599,7 +612,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  pdfLib.Widget _buildItemsTable(CartService cartService) {
+  pdfLib.Widget _buildItemsTable(List<CartItem> items) {
     final currencyCode = AppCurrencyPreference.readCode(
       locator.databaseService,
     );
@@ -667,7 +680,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ],
             ),
             // Lignes des articles
-            ...cartService.items.map((item) {
+            ...items.map((item) {
               final articleName = item.article.libelle;
               final qty = item.quantity.toString();
               final price = locator.tauxService.formatPrice(item.totalPrice);
@@ -676,12 +689,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 children: [
                   pdfLib.Padding(
                     padding: const pdfLib.EdgeInsets.all(2),
-                    child: pdfLib.Text(
-                      articleName,
-                      style: pdfLib.TextStyle(fontSize: 8),
-                      textAlign: pdfLib.TextAlign.left,
-                      maxLines: 2,
-                    ),
+                    child: buildPdfReceiptArticleNameCell(articleName),
                   ),
                   pdfLib.Padding(
                     padding: const pdfLib.EdgeInsets.all(2),
@@ -1277,6 +1285,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
 
     try {
+      await collectOptionalServiceDescriptions(context, cartService);
+      if (!mounted) return;
+
+      final invoiceItems = snapshotCartItemsForReceipt(cartService);
+
       // Prepare sale data
       final currentUser = locator.authRepository.currentUser;
       debugPrint('Current user: ${currentUser?.nomComplet}');
@@ -1333,17 +1346,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         'typeTransaction': _typeTransaction,
         'catalogueId': int.tryParse("0")?.toString(),
         'statutCommande': _paidAmount < total ? 'EN ATTENTE' : 'VALIDEE',
-        'lignesCommandes': cartService.items
-            .map(
-              (item) => {
-                'idStock': item.article.idStock,
-                'quantite': item.quantity,
-                'prixUnitaire': item.unitPrice,
-                'tva': item.article.tva,
-                'remise': item.discountPercentage,
-              },
-            )
-            .toList(),
+        'lignesCommandes': cartItemsToLignesCommandes(invoiceItems),
       };
 
       debugPrint('Sale data prepared: ${saleData.keys}');
@@ -1374,6 +1377,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         response,
         cartService,
         _selectedClient,
+        invoiceItems: invoiceItems,
       );
       debugPrint('Invoice generation completed');
 

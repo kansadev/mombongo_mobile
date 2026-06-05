@@ -1,5 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:mombongo/services/api_exception.dart';
+import 'package:mombongo/utils/api_error_message.dart';
+
+export 'api_exception.dart';
 import 'package:http/http.dart' as http;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:mombongo/models/article_update_request.dart';
@@ -115,6 +119,19 @@ class ApiService {
           if (rawMessage != null && rawMessage.toString().trim().isNotEmpty) {
             errorMessage = rawMessage.toString();
           }
+          final errors = mapBody['errors'];
+          if (errors is List && errors.isNotEmpty) {
+            final technicalDetail = errors
+                .map((e) => e.toString())
+                .where((e) => e.trim().isNotEmpty)
+                .join(' | ');
+            if (technicalDetail.isNotEmpty) {
+              errorDetails = {
+                ...mapBody,
+                'technicalErrors': technicalDetail,
+              };
+            }
+          }
         } else if (parsedErrorBody is String) {
           errorMessage = parsedErrorBody.trim().isEmpty
               ? 'Erreur serveur'
@@ -161,6 +178,31 @@ class ApiService {
 
       throw ApiException(errorMessage, 0);
     }
+  }
+
+  Future<T> _executeWithRetry<T>(
+    Future<T> Function() action, {
+    int maxAttempts = 3,
+    Duration initialDelay = const Duration(milliseconds: 600),
+  }) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await action();
+      } catch (e) {
+        lastError = e;
+        final canRetry = isRetryableApiError(e) && attempt < maxAttempts;
+        if (kDebugMode) {
+          debugPrint(
+            'Tentative API $attempt/$maxAttempts échouée'
+            '${canRetry ? ' — nouvel essai...' : ''}: $e',
+          );
+        }
+        if (!canRetry) rethrow;
+        await Future<void>.delayed(initialDelay * attempt);
+      }
+    }
+    throw lastError ?? ApiException('Erreur inconnue', 0);
   }
 
   // Authentication endpoints
@@ -950,6 +992,80 @@ class ApiService {
     return response is Map<String, dynamic> ? response : {};
   }
 
+  // Synthese des ventes par article endpoints
+  Future<Map<String, dynamic>> getVenteSyntheseParArticle({
+    int? idSociete,
+    int? idSite,
+    int? idUtilisateur,
+    int? idCaissier,
+    DateTime? dateDebut,
+    DateTime? dateFin,
+  }) async {
+    final queryParams = <String, String>{
+      if (idSociete != null) 'idSociete': idSociete.toString(),
+      if (idSite != null) 'idSite': idSite.toString(),
+      if (idUtilisateur != null) 'idUtilisateur': idUtilisateur.toString(),
+      if (idCaissier != null) 'idCaissier': idCaissier.toString(),
+      if (dateDebut != null) 'dateDebut': dateDebut.toIso8601String(),
+      if (dateFin != null) 'dateFin': dateFin.toIso8601String(),
+    };
+
+    final url = Uri.parse(
+      '$baseUrl/api/V_JournalVenteParSite/synthese/article',
+    ).replace(queryParameters: queryParams);
+
+    if (kDebugMode) {
+      print('=== GET VENTE SYNTHESE PAR ARTICLE ===');
+      print('URL: $url');
+    }
+
+    final response = await _handleRequest(
+      () => http.get(url, headers: _getHeaders()),
+    );
+
+    if (kDebugMode) {
+      print('=== VENTE SYNTHESE PAR ARTICLE RESPONSE ===');
+      print('Response: $response');
+    }
+
+    return response is Map<String, dynamic> ? response : {};
+  }
+
+  Future<Map<String, dynamic>> getVenteSyntheseParArticleCaissier(
+    int idCaissier, {
+    int? idSociete,
+    int? idSite,
+    DateTime? dateDebut,
+    DateTime? dateFin,
+  }) async {
+    final queryParams = <String, String>{
+      if (idSociete != null) 'idSociete': idSociete.toString(),
+      if (idSite != null) 'idSite': idSite.toString(),
+      if (dateDebut != null) 'dateDebut': dateDebut.toIso8601String(),
+      if (dateFin != null) 'dateFin': dateFin.toIso8601String(),
+    };
+
+    final url = Uri.parse(
+      '$baseUrl/api/V_JournalVenteParSite/synthese/article/caissier/$idCaissier',
+    ).replace(queryParameters: queryParams);
+
+    if (kDebugMode) {
+      print('=== GET VENTE SYNTHESE PAR ARTICLE CAISSIER ===');
+      print('URL: $url');
+    }
+
+    final response = await _handleRequest(
+      () => http.get(url, headers: _getHeaders()),
+    );
+
+    if (kDebugMode) {
+      print('=== VENTE SYNTHESE PAR ARTICLE CAISSIER RESPONSE ===');
+      print('Response: $response');
+    }
+
+    return response is Map<String, dynamic> ? response : {};
+  }
+
   // Client endpoints
   Future<List<dynamic>> getClients() async {
     final url = Uri.parse('$baseUrl/api/Clients');
@@ -1423,8 +1539,24 @@ class ApiService {
       'idUtilisateur': idUtilisateur,
     });
 
-    return await _handleRequest(
-      () => http.post(url, headers: _getHeaders(), body: body),
+    return _executeWithRetry<Map<String, dynamic>>(
+      () async {
+        if (kDebugMode) {
+          debugPrint('=== POST /api/Vente/retirer-produit ===');
+          debugPrint('Body: $body');
+        }
+        final response = await _handleRequest(
+          () => http.post(url, headers: _getHeaders(), body: body),
+        );
+        final map = response is Map<String, dynamic>
+            ? response
+            : <String, dynamic>{'success': true};
+        if (kDebugMode) {
+          debugPrint('=== RESPONSE retirer-produit ===');
+          debugPrint(jsonEncode(map));
+        }
+        return map;
+      },
     );
   }
 
@@ -1442,8 +1574,24 @@ class ApiService {
       'idUtilisateur': idUtilisateur,
     });
 
-    return await _handleRequest(
-      () => http.post(url, headers: _getHeaders(), body: body),
+    return _executeWithRetry<Map<String, dynamic>>(
+      () async {
+        if (kDebugMode) {
+          debugPrint('=== POST /api/Vente/reduire-quantite ===');
+          debugPrint('Body: $body');
+        }
+        final response = await _handleRequest(
+          () => http.post(url, headers: _getHeaders(), body: body),
+        );
+        final map = response is Map<String, dynamic>
+            ? response
+            : <String, dynamic>{'success': true};
+        if (kDebugMode) {
+          debugPrint('=== RESPONSE reduire-quantite ===');
+          debugPrint(jsonEncode(map));
+        }
+        return map;
+      },
     );
   }
 
@@ -2291,13 +2439,3 @@ class ApiService {
   }
 }
 
-class ApiException implements Exception {
-  final String message;
-  final int statusCode;
-  final Map<String, dynamic>? details;
-
-  ApiException(this.message, this.statusCode, {this.details});
-
-  @override
-  String toString() => 'ApiException: $message (Status: $statusCode)';
-}

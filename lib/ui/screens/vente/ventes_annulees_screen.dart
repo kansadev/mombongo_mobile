@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/ui/screens/caissier/commande_detail_screen.dart';
+import 'package:mombongo/utils/commande_invoice_helper.dart';
 
 class VentesAnnuleesScreen extends StatefulWidget {
   const VentesAnnuleesScreen({super.key});
@@ -151,6 +153,33 @@ class _VentesAnnuleesScreenState extends State<VentesAnnuleesScreen> {
       });
       _loadVentesAnnulees(page: 1);
     }
+  }
+
+  int? _idCommandeFromVente(Map<String, dynamic> vente) {
+    final id = int.tryParse(vente['idCommande']?.toString() ?? '') ?? 0;
+    return id > 0 ? id : null;
+  }
+
+  void _openCommandeDetail(Map<String, dynamic> vente) {
+    final idCommande = _idCommandeFromVente(vente);
+    if (idCommande == null) return;
+
+    Navigator.push<bool>(
+      context,
+      MaterialPageRoute<bool>(
+        builder: (context) => CommandeDetailScreen(idCommande: idCommande),
+      ),
+    ).then((changed) {
+      if (changed == true && mounted) {
+        _loadVentesAnnulees(page: _currentPage);
+      }
+    });
+  }
+
+  Future<void> _imprimerFacture(Map<String, dynamic> vente) async {
+    final idCommande = _idCommandeFromVente(vente);
+    if (idCommande == null) return;
+    await imprimerFactureCommande(context, idCommande);
   }
 
   void _clearFilters() {
@@ -317,6 +346,22 @@ class _VentesAnnuleesScreenState extends State<VentesAnnuleesScreen> {
                 color: Colors.grey[700],
                 fontWeight: FontWeight.w600,
               ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () => _openCommandeDetail(vente),
+                  icon: const Icon(Icons.visibility_outlined, size: 18),
+                  label: const Text('Détail'),
+                ),
+                TextButton.icon(
+                  onPressed: () => _imprimerFacture(vente),
+                  icon: const Icon(Icons.print_outlined, size: 18),
+                  label: const Text('Imprimer'),
+                ),
+              ],
             ),
           ],
         ),

@@ -15,11 +15,17 @@ class CartItem {
   @HiveField(2)
   double discountPercentage;
 
+  @HiveField(3)
+  String? description;
+
   CartItem({
     required this.article,
     this.quantity = 1,
     this.discountPercentage = 0.0,
+    this.description,
   });
+
+  bool get isService => !article.withStock;
 
   // Use the pre-calculated TTC price from API
   double get unitPrice => article.prixVentTTC;
@@ -43,11 +49,13 @@ class CartItem {
     ArticleData? article,
     int? quantity,
     double? discountPercentage,
+    String? description,
   }) {
     return CartItem(
       article: article ?? this.article,
       quantity: quantity ?? this.quantity,
       discountPercentage: discountPercentage ?? this.discountPercentage,
+      description: description ?? this.description,
     );
   }
 }
@@ -107,19 +115,30 @@ class CartService extends ChangeNotifier {
     }
   }
 
-  void addItem(ArticleData article, {int quantity = 1, double discount = 0.0}) {
-    final existingIndex = _items.indexWhere((item) => item.article.idArticle == article.idArticle);
-    
+  void addItem(
+    ArticleData article, {
+    int quantity = 1,
+    double discount = 0.0,
+    String? description,
+  }) {
+    final existingIndex = _items.indexWhere(
+      (item) => item.article.idArticle == article.idArticle,
+    );
+
     if (existingIndex >= 0) {
       _items[existingIndex] = _items[existingIndex].copyWith(
         quantity: _items[existingIndex].quantity + quantity,
+        description: description ?? _items[existingIndex].description,
       );
     } else {
-      _items.add(CartItem(
-        article: article,
-        quantity: quantity,
-        discountPercentage: discount,
-      ));
+      _items.add(
+        CartItem(
+          article: article,
+          quantity: quantity,
+          discountPercentage: discount,
+          description: description,
+        ),
+      );
     }
     
     _saveToCache();
@@ -150,6 +169,15 @@ class CartService extends ChangeNotifier {
     final index = _items.indexWhere((item) => item.article.idArticle == articleId);
     if (index >= 0) {
       _items[index] = _items[index].copyWith(discountPercentage: discountPercentage);
+      _saveToCache();
+      notifyListeners();
+    }
+  }
+
+  void updateDescription(int articleId, String description) {
+    final index = _items.indexWhere((item) => item.article.idArticle == articleId);
+    if (index >= 0) {
+      _items[index] = _items[index].copyWith(description: description);
       _saveToCache();
       notifyListeners();
     }

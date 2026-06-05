@@ -4,6 +4,8 @@ import 'package:mombongo/services/service_locator.dart';
 import 'package:intl/intl.dart';
 import 'package:mombongo/ui/screens/caissier/annuler_vente_screen.dart';
 import 'package:mombongo/ui/screens/caissier/commande_detail_screen.dart';
+import 'package:mombongo/utils/commande_invoice_helper.dart';
+import 'package:mombongo/utils/parse_utils.dart';
 
 enum _VuePaiements {
   /// Par défaut : masque annulés et remboursés
@@ -42,6 +44,30 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
   final int _pageSize = 20;
   int _totalCount = 0;
   bool _hasMorePages = true;
+  bool _dataChanged = false;
+
+  void _markDataChanged() {
+    _dataChanged = true;
+  }
+
+  void _popWithResult() {
+    Navigator.pop(context, _dataChanged);
+  }
+
+  int? _idCommandeFromPaiement(Map<String, dynamic> paiement) {
+    return resolveIdCommandeFromPaiement(paiement);
+  }
+
+  Future<void> _imprimerFacture(Map<String, dynamic> paiement) async {
+    final idCommande = _idCommandeFromPaiement(paiement);
+    if (idCommande == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune commande associée à ce paiement')),
+      );
+      return;
+    }
+    await imprimerFactureCommande(context, idCommande);
+  }
 
   @override
   void initState() {
@@ -413,10 +439,9 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
     final venteForAnnulation = <String, dynamic>{
       'idCommande': idCommande,
       'libelle': commande?['libelle']?.toString() ?? 'Commande #$idCommande',
-      'quantite':
-          int.tryParse(commande?['quantite']?.toString() ?? '') ??
-          int.tryParse(paiement['quantite']?.toString() ?? '') ??
-          0,
+      'quantite': parseAsInt(
+        commande?['quantite'] ?? paiement['quantite'],
+      ),
       'total':
           double.tryParse(commande?['montantTotal']?.toString() ?? '') ??
           double.tryParse(paiement['montant']?.toString() ?? '') ??
@@ -435,6 +460,7 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
     );
 
     if (result == true && mounted) {
+      _markDataChanged();
       _loadPaiements();
     }
   }
@@ -454,12 +480,17 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
       return;
     }
 
-    Navigator.push(
+    Navigator.push<bool>(
       context,
-      MaterialPageRoute<void>(
+      MaterialPageRoute<bool>(
         builder: (context) => CommandeDetailScreen(idCommande: idCommande),
       ),
-    );
+    ).then((changed) {
+      if (changed == true && mounted) {
+        _markDataChanged();
+        _loadPaiements();
+      }
+    });
   }
 
   Widget _buildPaiementCard(Map<String, dynamic> paiement) {
@@ -698,24 +729,36 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
                     ),
                   ),
                 ],
-                if ((paiement['idCommande'] != null || commande != null) &&
-                    !isAnnuleOuRembourse) ...[
+                if (paiement['idCommande'] != null || commande != null) ...[
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       TextButton.icon(
-                        onPressed: () => _annulerVenteFromPaiement(paiement),
-                        icon: const Icon(Icons.cancel_outlined, size: 18),
+                        onPressed: () => _imprimerFacture(paiement),
+                        icon: const Icon(Icons.print_outlined, size: 18),
                         label: Text(
-                          'Annuler',
+                          'Imprimer',
                           style: GoogleFonts.poppins(fontSize: 12),
                         ),
                         style: TextButton.styleFrom(
-                          foregroundColor: Colors.red[400],
+                          foregroundColor: const Color(0xFF2C3E50),
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                         ),
                       ),
+                      if (!isAnnuleOuRembourse)
+                        TextButton.icon(
+                          onPressed: () => _annulerVenteFromPaiement(paiement),
+                          icon: const Icon(Icons.cancel_outlined, size: 18),
+                          label: Text(
+                            'Annuler',
+                            style: GoogleFonts.poppins(fontSize: 12),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red[400],
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                        ),
                     ],
                   ),
                 ],
@@ -806,7 +849,14 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.pop(context, _dataChanged);
+        }
+      },
+      child: Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         backgroundColor: const Color(0xFF2C3E50),
@@ -856,7 +906,10 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
                   _applyFilters();
                 },
               )
-            : null,
+            : IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: _popWithResult,
+              ),
         actions: [
           if (!_showSearch)
             IconButton(
@@ -1043,6 +1096,7 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
             _buildPaginationFooter(),
         ],
       ),
+    ),
     );
   }
 }

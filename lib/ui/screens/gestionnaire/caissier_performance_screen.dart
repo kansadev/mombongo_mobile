@@ -4,7 +4,7 @@ import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/ui/screens/profil_screen.dart';
 import '../../../services/service_locator.dart';
 import '../../../models/site.dart';
-import 'caissier_journal_screen.dart';
+import 'package:mombongo/ui/screens/caissier/sales_journal_screen.dart';
 
 class CaissierPerformanceScreen extends StatefulWidget {
   const CaissierPerformanceScreen({super.key});
@@ -570,8 +570,8 @@ class _CaissierPerformanceScreenState extends State<CaissierPerformanceScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => CaissierJournalScreen(
-                          idUtilisateur: idCaissier,
+                        builder: (context) => SalesJournalScreen(
+                          idCaissier: idCaissier,
                           nomCaissier: nomCaissier,
                         ),
                       ),

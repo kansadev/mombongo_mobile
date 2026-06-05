@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
+import 'package:mombongo/utils/parse_utils.dart';
 
 class AnnulerVenteScreen extends StatefulWidget {
   final Map<String, dynamic> vente;
@@ -156,7 +157,10 @@ class _AnnulerVenteScreenState extends State<AnnulerVenteScreen> {
                         vente['libelle']?.toString() ?? 'N/A',
                       ),
                       _buildDetailRow('Commande', '#${vente['idCommande']}'),
-                      _buildDetailRow('Quantité', '${vente['quantite'] ?? 0}'),
+                      _buildDetailRow(
+                        'Quantité',
+                        '${parseAsInt(vente['quantite'])}',
+                      ),
                       _buildDetailRow(
                         'Total',
                         _formatCurrency(_parseDouble(vente['total'] ?? 0)),

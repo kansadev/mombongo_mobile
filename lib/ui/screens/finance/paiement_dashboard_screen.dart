@@ -15,6 +15,24 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
   bool _isLoading = true;
   Map<String, dynamic>? _paiementsData;
   String? _errorMessage;
+  bool _dataChanged = false;
+
+  void _popWithResult() {
+    Navigator.pop(context, _dataChanged);
+  }
+
+  Future<void> _openPaiementsHistorique() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute<bool>(
+        builder: (context) => const PaiementsScreen(),
+      ),
+    );
+    if (changed == true && mounted) {
+      setState(() => _dataChanged = true);
+      await _loadPaiementsData();
+    }
+  }
 
   @override
   void initState() {
@@ -38,10 +56,16 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
 
       final idSociete = int.tryParse(currentUser.idSociete) ?? 0;
       final idSite = int.tryParse(currentUser.idSite) ?? 0;
+      final role = currentUser.role.toLowerCase();
+      final isCaissier = role.contains('caissier');
+      final idUtilisateur = isCaissier
+          ? int.tryParse(currentUser.idUtilisateur)
+          : null;
 
       final data = await locator.apiService.getPaiementsDashboard(
         idSociete: idSociete,
         idSite: idSite,
+        idUtilisateur: idUtilisateur,
       );
 
       if (!mounted) return;
@@ -69,7 +93,14 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.pop(context, _dataChanged);
+        }
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
         title: const Text('Dashboard Paiements'),
@@ -77,6 +108,10 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
         backgroundColor: const Color(0xFF2C3E50),
         foregroundColor: Colors.white,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: _popWithResult,
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: _loadPaiementsData,
@@ -141,6 +176,7 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
               )
             : _buildContent(),
       ),
+    ),
     );
   }
 
@@ -360,14 +396,7 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: OutlinedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const PaiementsScreen(),
-                  ),
-                );
-              },
+              onPressed: _openPaiementsHistorique,
               icon: const Icon(Icons.list),
               label: const Text('Voir historique des paiements'),
               style: OutlinedButton.styleFrom(

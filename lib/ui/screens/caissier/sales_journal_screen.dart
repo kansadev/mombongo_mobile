@@ -1,4 +1,3 @@
-// lib/screens/sales_journal_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -6,67 +5,81 @@ import 'package:mombongo/services/app_currency_preference.dart';
 import '../../../services/service_locator.dart';
 
 class SalesJournalScreen extends StatefulWidget {
-  const SalesJournalScreen({super.key});
+  final int? idCaissier;
+  final String? nomCaissier;
+
+  const SalesJournalScreen({
+    super.key,
+    this.idCaissier,
+    this.nomCaissier,
+  });
 
   @override
   State<SalesJournalScreen> createState() => _SalesJournalScreenState();
 }
 
 class _SalesJournalScreenState extends State<SalesJournalScreen> {
-  final ScrollController _scrollController = ScrollController();
-  List<dynamic> _allVentes = [];
+  Map<String, dynamic>? _syntheseData;
+  List<dynamic> _articles = [];
   bool _isLoading = false;
-  bool _isLoadingMore = false;
   String? _errorMessage;
-  int _currentPage = 1;
-  int _totalPages = 1;
-  int _totalCount = 0;
+  bool _isSiteSynthese = false;
   DateTime? _selectedDate;
-  double _montantTotal = 0.0;
-  double _quantiteTotale = 0.0;
+  String _sortField = 'chiffreAffaires';
   String _sortOrder = 'desc';
-  bool _isActionInProgress = false;
 
   @override
   void initState() {
     super.initState();
     _loadJournalData();
-    _scrollController.addListener(_onScroll);
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
+  void _sortArticles() {
+    _articles.sort((a, b) {
+      dynamic valueA;
+      dynamic valueB;
 
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      if (!_isLoadingMore && _currentPage < _totalPages) {
-        _loadMoreData();
+      if (_sortField == 'derniereVente') {
+        valueA = a['derniereVente']?.toString() ?? '';
+        valueB = b['derniereVente']?.toString() ?? '';
+        if (valueA.isEmpty && valueB.isEmpty) return 0;
+        if (valueA.isEmpty) return _sortOrder == 'desc' ? 1 : -1;
+        if (valueB.isEmpty) return _sortOrder == 'desc' ? -1 : 1;
+        return _sortOrder == 'desc'
+            ? valueB.compareTo(valueA)
+            : valueA.compareTo(valueB);
       }
-    }
-  }
 
-  void _sortVentes() {
-    _allVentes.sort((a, b) {
-      final dateA = a['dateCreation']?.toString() ?? '';
-      final dateB = b['dateCreation']?.toString() ?? '';
-      if (dateA.isEmpty && dateB.isEmpty) return 0;
-      if (dateA.isEmpty) return _sortOrder == 'desc' ? -1 : 1;
-      if (dateB.isEmpty) return _sortOrder == 'desc' ? 1 : -1;
+      valueA = _parseDouble(a[_sortField] ?? 0);
+      valueB = _parseDouble(b[_sortField] ?? 0);
       return _sortOrder == 'desc'
-          ? dateB.compareTo(dateA)
-          : dateA.compareTo(dateB);
+          ? valueB.compareTo(valueA)
+          : valueA.compareTo(valueB);
     });
   }
 
   void _toggleSort() {
     setState(() {
-      _sortOrder = _sortOrder == 'desc' ? 'asc' : 'desc';
+      if (_sortField == 'chiffreAffaires') {
+        _sortField = 'derniereVente';
+        _sortOrder = 'desc';
+      } else if (_sortField == 'derniereVente' && _sortOrder == 'desc') {
+        _sortOrder = 'asc';
+      } else {
+        _sortField = 'chiffreAffaires';
+        _sortOrder = 'desc';
+      }
+      _sortArticles();
     });
-    _sortVentes();
+  }
+
+  String get _sortTooltip {
+    if (_sortField == 'chiffreAffaires') {
+      return 'Trié par CA (décroissant)';
+    }
+    return _sortOrder == 'desc'
+        ? 'Trié par date (plus récent)'
+        : 'Trié par date (plus ancien)';
   }
 
   Future<void> _loadJournalData() async {
@@ -75,7 +88,6 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      _currentPage = 1;
     });
 
     try {
@@ -84,39 +96,72 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
         throw Exception('Utilisateur non connecté');
       }
 
-      final idUtilisateur = int.tryParse(currentUser.idUtilisateur) ?? 0;
-      if (idUtilisateur == 0) {
+      final role = currentUser.role.toLowerCase();
+      final isGestionnaireSite =
+          widget.idCaissier == null && role.contains('gestionnaire');
+
+      final idUtilisateur = widget.idCaissier ??
+          int.tryParse(currentUser.idUtilisateur) ??
+          0;
+      final idSite = int.tryParse(currentUser.idSite) ?? 0;
+      final idSociete = int.tryParse(currentUser.idSociete) ?? 0;
+
+      if (!isGestionnaireSite && idUtilisateur == 0) {
         throw Exception('ID utilisateur invalide');
       }
+      if (isGestionnaireSite && idSite == 0) {
+        throw Exception('ID site invalide');
+      }
 
-      final response = await locator.apiService.getJournalVenteParCaissier(
-        idUtilisateur: idUtilisateur,
-        page: 1,
-        pageSize: 20,
-      );
+      DateTime? dateDebut;
+      DateTime? dateFin;
+      if (_selectedDate != null) {
+        dateDebut = DateTime(
+          _selectedDate!.year,
+          _selectedDate!.month,
+          _selectedDate!.day,
+        );
+        dateFin = DateTime(
+          _selectedDate!.year,
+          _selectedDate!.month,
+          _selectedDate!.day,
+          23,
+          59,
+          59,
+        );
+      }
+
+      final Map<String, dynamic> response;
+      if (isGestionnaireSite) {
+        response = await locator.apiService.getVenteSyntheseParArticle(
+          idSociete: idSociete > 0 ? idSociete : null,
+          idSite: idSite > 0 ? idSite : null,
+          dateDebut: dateDebut,
+          dateFin: dateFin,
+        );
+      } else {
+        response =
+            await locator.apiService.getVenteSyntheseParArticleCaissier(
+          idUtilisateur,
+          idSociete: idSociete > 0 ? idSociete : null,
+          idSite: idSite > 0 ? idSite : null,
+          dateDebut: dateDebut,
+          dateFin: dateFin,
+        );
+      }
 
       if (!mounted) return;
 
-      final data = response['data'] as List<dynamic>? ?? [];
-      final pagination = response['pagination'] as Map<String, dynamic>? ?? {};
-
-      double montantTotal = 0.0;
-      double quantiteTotale = 0.0;
-
-      for (var vente in data) {
-        montantTotal += _parseDouble(vente['total'] ?? 0);
-        quantiteTotale += _parseDouble(vente['quantite'] ?? 0);
-      }
+      final articles = response['syntheseParArticle'] as List<dynamic>? ?? [];
 
       setState(() {
-        _allVentes = List.from(data);
-        _totalPages = _parseInt(pagination['totalPages'] ?? 1);
-        _totalCount = _parseInt(pagination['totalCount'] ?? 0);
-        _montantTotal = montantTotal;
-        _quantiteTotale = quantiteTotale;
+        _isSiteSynthese = isGestionnaireSite;
+        _syntheseData = response;
+        _articles = List.from(articles);
         _isLoading = false;
       });
-      _sortVentes();
+      _sortArticles();
+      if (mounted) setState(() {});
     } catch (e) {
       debugPrint('Erreur lors du chargement du journal: $e');
       if (!mounted) return;
@@ -125,268 +170,6 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
         _errorMessage = e.toString();
         _isLoading = false;
       });
-    }
-  }
-
-  Future<void> _loadMoreData() async {
-    if (!mounted || _isLoadingMore) return;
-
-    setState(() {
-      _isLoadingMore = true;
-    });
-
-    try {
-      final currentUser = locator.authRepository.currentUser;
-      if (currentUser == null) return;
-
-      final idUtilisateur = int.tryParse(currentUser.idUtilisateur) ?? 0;
-
-      final response = await locator.apiService.getJournalVenteParCaissier(
-        idUtilisateur: idUtilisateur,
-        page: _currentPage + 1,
-        pageSize: 20,
-      );
-
-      if (!mounted) return;
-
-      final data = response['data'] as List<dynamic>? ?? [];
-      final pagination = response['pagination'] as Map<String, dynamic>? ?? {};
-
-      double montantTotalAdd = 0.0;
-      double quantiteTotaleAdd = 0.0;
-
-      for (var vente in data) {
-        montantTotalAdd += _parseDouble(vente['total'] ?? 0);
-        quantiteTotaleAdd += _parseDouble(vente['quantite'] ?? 0);
-      }
-
-      setState(() {
-        _allVentes = [..._allVentes, ...data];
-        _currentPage = _parseInt(pagination['page'] ?? 1);
-        _totalPages = _parseInt(pagination['totalPages'] ?? 1);
-        _totalCount = _parseInt(pagination['totalCount'] ?? 0);
-        _montantTotal += montantTotalAdd;
-        _quantiteTotale += quantiteTotaleAdd;
-        _isLoadingMore = false;
-      });
-      _sortVentes();
-    } catch (e) {
-      debugPrint('Erreur lors du chargement supplémentaire: $e');
-      if (!mounted) return;
-      setState(() {
-        _isLoadingMore = false;
-      });
-    }
-  }
-
-  Future<void> _retirerProduitVente(
-    Map<String, dynamic> vente, {
-    bool showConfirmation = true,
-  }) async {
-    try {
-      final currentUser = locator.authRepository.currentUser;
-      if (currentUser == null) {
-        throw Exception('Utilisateur non connecté');
-      }
-
-      final idCommande = _parseInt(vente['idCommande']);
-      final idStock = _parseInt(vente['idStock']);
-      final idUtilisateur = _parseInt(currentUser.idUtilisateur);
-
-      if (idCommande <= 0 || idStock <= 0 || idUtilisateur <= 0) {
-        throw Exception('Informations de vente invalides (commande/stock)');
-      }
-
-      if (showConfirmation) {
-        final shouldProceed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Retirer le produit'),
-            content: Text(
-              'Confirmer le retrait de "${vente['libelle'] ?? 'cet article'}" '
-              'de la commande #$idCommande ?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Annuler'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Confirmer'),
-              ),
-            ],
-          ),
-        );
-
-        if (shouldProceed != true) return;
-      }
-
-      _showLoadingDialog();
-      await locator.apiService.retirerProduitVente(
-        idCommande: idCommande,
-        idStock: idStock,
-        idUtilisateur: idUtilisateur,
-      );
-      _hideLoadingDialog();
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Produit retiré avec succès')),
-      );
-      await _loadJournalData();
-    } catch (e) {
-      _hideLoadingDialog();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Erreur lors du retrait: $e')));
-    }
-  }
-
-  Future<void> _reduireQuantiteProduitVente(Map<String, dynamic> vente) async {
-    final quantiteActuelle = _parseInt(vente['quantite']);
-
-    if (quantiteActuelle == 1) {
-      final shouldRemove = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Attention'),
-          content: Text(
-            'La quantité actuelle est 1. '
-            'Réduire cette quantité va retirer le produit '
-            '"${vente['libelle'] ?? ''}" de la commande.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Continuer'),
-            ),
-          ],
-        ),
-      );
-
-      if (shouldRemove == true) {
-        await _retirerProduitVente(vente, showConfirmation: false);
-      }
-      return;
-    }
-
-    final controller = TextEditingController(
-      text: quantiteActuelle > 1 ? '${quantiteActuelle - 1}' : '1',
-    );
-
-    try {
-      final nouvelleQuantite = await showDialog<int>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Réduire la quantité'),
-          content: TextField(
-            controller: controller,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Nouvelle quantité',
-              hintText: 'Saisir une quantité',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final value = int.tryParse(controller.text.trim());
-                Navigator.pop(context, value);
-              },
-              child: const Text('Valider'),
-            ),
-          ],
-        ),
-      );
-
-      if (nouvelleQuantite == null) return;
-      if (nouvelleQuantite <= 0) {
-        throw Exception('La quantité doit être supérieure à 0');
-      }
-      if (quantiteActuelle > 0 && nouvelleQuantite >= quantiteActuelle) {
-        throw Exception(
-          'La nouvelle quantité doit être inférieure à la quantité actuelle ($quantiteActuelle)',
-        );
-      }
-
-      final currentUser = locator.authRepository.currentUser;
-      if (currentUser == null) {
-        throw Exception('Utilisateur non connecté');
-      }
-
-      final idCommande = _parseInt(vente['idCommande']);
-      final idStock = _parseInt(vente['idStock']);
-      final idUtilisateur = _parseInt(currentUser.idUtilisateur);
-
-      if (idCommande <= 0 || idStock <= 0 || idUtilisateur <= 0) {
-        throw Exception('Informations de vente invalides (commande/stock)');
-      }
-
-      _showLoadingDialog();
-      await locator.apiService.reduireQuantiteProduitVente(
-        idCommande: idCommande,
-        idStock: idStock,
-        nouvelleQuantite: nouvelleQuantite,
-        idUtilisateur: idUtilisateur,
-      );
-      _hideLoadingDialog();
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Quantité mise à jour avec succès')),
-      );
-      await _loadJournalData();
-    } catch (e) {
-      _hideLoadingDialog();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur lors de la réduction: $e')),
-      );
-    } finally {
-      controller.dispose();
-    }
-  }
-
-  void _showLoadingDialog() {
-    if (!mounted || _isActionInProgress) return;
-    _isActionInProgress = true;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const PopScope(
-        canPop: false,
-        child: AlertDialog(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              SizedBox(width: 16),
-              Expanded(child: Text('Traitement en cours...')),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _hideLoadingDialog() {
-    if (!_isActionInProgress) return;
-    _isActionInProgress = false;
-    if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
-      Navigator.of(context, rootNavigator: true).pop();
     }
   }
 
@@ -445,6 +228,306 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
     }
   }
 
+  String _formatSignedCurrency(double amount) {
+    if (amount < 0) {
+      return '-${_formatCurrency(-amount)}';
+    }
+    return _formatCurrency(amount);
+  }
+
+  void _showArticleDetails(Map<String, dynamic> article) {
+    final libelle = article['libelle']?.toString() ?? 'Article';
+    final idStock = _parseInt(article['idStock']);
+    final nombreVentes = _parseInt(article['nombreVentes']);
+    final quantiteVendue = _parseInt(article['quantiteVendue']);
+    final chiffreAffaires = _parseDouble(article['chiffreAffaires']);
+    final prixMoyen = _parseDouble(article['prixMoyen']);
+    final prixMin = _parseDouble(article['prixMin']);
+    final prixMax = _parseDouble(article['prixMax']);
+    final margeTotale = _parseDouble(article['margeTotale']);
+    final margeMoyenne = _parseDouble(article['margeMoyenne']);
+    final tauxMarge = _parseDouble(article['tauxMarge']);
+    final premierVente = article['premierVente']?.toString();
+    final derniereVente = article['derniereVente']?.toString();
+    final nombreSites = _parseInt(article['nombreSitesDistincts']);
+    final nombreCaissiers = _parseInt(article['nombreCaissiersDistincts']);
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.72,
+          minChildSize: 0.45,
+          maxChildSize: 0.92,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF2C3E50,
+                            ).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.inventory_2_outlined,
+                            color: Color(0xFF2C3E50),
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                libelle,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF2C3E50),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Stock #$idStock',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          icon: const Icon(Icons.close),
+                          color: Colors.grey[600],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.green.shade600,
+                          Colors.green.shade400,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Chiffre d\'affaires',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatCurrency(chiffreAffaires),
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                      children: [
+                        _buildDetailSection(
+                          title: 'Ventes',
+                          children: [
+                            _buildDetailRow(
+                              'Nombre de ventes',
+                              '$nombreVentes',
+                            ),
+                            _buildDetailRow(
+                              'Quantité vendue',
+                              '$quantiteVendue',
+                            ),
+                            _buildDetailRow(
+                              'Sites distincts',
+                              '$nombreSites',
+                            ),
+                            _buildDetailRow(
+                              'Caissiers distincts',
+                              '$nombreCaissiers',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _buildDetailSection(
+                          title: 'Prix',
+                          children: [
+                            _buildDetailRow(
+                              'Prix moyen',
+                              _formatCurrency(prixMoyen),
+                            ),
+                            _buildDetailRow(
+                              'Prix minimum',
+                              _formatCurrency(prixMin),
+                            ),
+                            _buildDetailRow(
+                              'Prix maximum',
+                              _formatCurrency(prixMax),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _buildDetailSection(
+                          title: 'Marge',
+                          children: [
+                            _buildDetailRow(
+                              'Taux de marge',
+                              '${tauxMarge.toStringAsFixed(2)} %',
+                              valueColor: tauxMarge >= 0
+                                  ? Colors.green[700]
+                                  : Colors.red[700],
+                            ),
+                            _buildDetailRow(
+                              'Marge totale',
+                              _formatSignedCurrency(margeTotale),
+                              valueColor: margeTotale >= 0
+                                  ? Colors.green[700]
+                                  : Colors.red[700],
+                            ),
+                            _buildDetailRow(
+                              'Marge moyenne',
+                              _formatSignedCurrency(margeMoyenne),
+                              valueColor: margeMoyenne >= 0
+                                  ? Colors.green[700]
+                                  : Colors.red[700],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _buildDetailSection(
+                          title: 'Période',
+                          children: [
+                            _buildDetailRow(
+                              'Première vente',
+                              _formatDate(premierVente),
+                            ),
+                            _buildDetailRow(
+                              'Dernière vente',
+                              _formatDate(derniereVente),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailSection({
+    required String title,
+    required List<Widget> children,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF2C3E50),
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(
+    String label,
+    String value, {
+    Color? valueColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: valueColor ?? const Color(0xFF2C3E50),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -461,6 +544,12 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
     }
   }
 
+  Map<String, dynamic>? get _totauxGlobaux =>
+      _syntheseData?['totauxGlobaux'] as Map<String, dynamic>?;
+
+  Map<String, dynamic>? get _periodeAnalyse =>
+      _syntheseData?['periodeAnalyse'] as Map<String, dynamic>?;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -473,7 +562,11 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Journal des Ventes',
+          widget.nomCaissier != null
+              ? 'Synthèse — ${widget.nomCaissier}'
+              : _isSiteSynthese
+                  ? 'Synthèse ventes — Site'
+                  : 'Journal des Ventes',
           style: GoogleFonts.poppins(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -484,10 +577,14 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
           IconButton(
             onPressed: _toggleSort,
             icon: Icon(
-              _sortOrder == 'desc' ? Icons.arrow_downward : Icons.arrow_upward,
+              _sortField == 'chiffreAffaires'
+                  ? Icons.sort_by_alpha
+                  : (_sortOrder == 'desc'
+                        ? Icons.arrow_downward
+                        : Icons.arrow_upward),
               color: Colors.white,
             ),
-            tooltip: _sortOrder == 'desc' ? 'Plus récent' : 'Plus ancien',
+            tooltip: _sortTooltip,
           ),
           IconButton(
             onPressed: _selectDate,
@@ -512,7 +609,7 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _loadJournalData,
-        child: _isLoading && _allVentes.isEmpty
+        child: _isLoading && _articles.isEmpty
             ? const Center(child: CircularProgressIndicator())
             : _errorMessage != null
             ? Center(
@@ -547,8 +644,11 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
                 ),
               )
             : CustomScrollView(
-                controller: _scrollController,
                 slivers: [
+                  if (_periodeAnalyse != null)
+                    SliverToBoxAdapter(child: _buildPeriodeInfo()),
+                  if (_totauxGlobaux != null)
+                    SliverToBoxAdapter(child: _buildTotauxSection()),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -556,7 +656,7 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Historique des ventes',
+                            'Synthèse par article',
                             style: GoogleFonts.poppins(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
@@ -564,7 +664,7 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
                             ),
                           ),
                           Text(
-                            '${_allVentes.length}/$_totalCount',
+                            '${_articles.length} article${_articles.length > 1 ? 's' : ''}',
                             style: GoogleFonts.poppins(
                               fontSize: 14,
                               color: Colors.grey[500],
@@ -574,7 +674,7 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
                       ),
                     ),
                   ),
-                  if (_allVentes.isEmpty)
+                  if (_articles.isEmpty)
                     SliverFillRemaining(
                       child: Center(
                         child: Column(
@@ -602,21 +702,117 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate((context, index) {
-                          final vente = _allVentes[index];
-                          return _buildVenteCard(vente, index);
-                        }, childCount: _allVentes.length),
-                      ),
-                    ),
-                  if (_isLoadingMore)
-                    const SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.all(20),
-                        child: Center(child: CircularProgressIndicator()),
+                          final article = _articles[index];
+                          return _buildArticleCard(article, index);
+                        }, childCount: _articles.length),
                       ),
                     ),
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 ],
               ),
+      ),
+    );
+  }
+
+  Widget _buildPeriodeInfo() {
+    final periode = _periodeAnalyse!;
+    final dateDebut = periode['dateDebut']?.toString();
+    final dateFin = periode['dateFin']?.toString();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.blue.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.date_range, color: Colors.blue.shade700, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Du ${_formatDate(dateDebut)} au ${_formatDate(dateFin)}',
+                style: GoogleFonts.poppins(
+                  color: Colors.blue.shade700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTotauxSection() {
+    final totaux = _totauxGlobaux!;
+    final totalCA = _parseDouble(totaux['totalChiffreAffaires']);
+    final totalVentes = _parseInt(totaux['totalVentes']);
+    final totalArticles = _parseInt(totaux['totalArticles']);
+    final totalQte = _parseInt(totaux['totalQuantiteVendue']);
+    final margeTotale = _parseDouble(totaux['margeTotaleGlobale']);
+    final tauxMarge = _parseDouble(totaux['tauxMargeGlobal']);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Column(
+        children: [
+          _buildStatCard(
+            label: 'Chiffre d\'affaires',
+            value: _formatCurrencyCompact(totalCA),
+            fullValue: _formatCurrency(totalCA),
+            icon: Icons.payments,
+            color: Colors.green[700]!,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard(
+                  label: 'Ventes',
+                  value: '$totalVentes',
+                  icon: Icons.receipt_long,
+                  color: const Color(0xFF2C3E50),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildStatCard(
+                  label: 'Articles',
+                  value: '$totalArticles',
+                  icon: Icons.category,
+                  color: Colors.blue[700]!,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard(
+                  label: 'Quantité',
+                  value: '$totalQte',
+                  icon: Icons.inventory_2,
+                  color: Colors.orange[700]!,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildStatCard(
+                  label: 'Marge (${tauxMarge.toStringAsFixed(1)}%)',
+                  value: _formatCurrencyCompact(margeTotale),
+                  fullValue: _formatCurrency(margeTotale),
+                  icon: Icons.trending_up,
+                  color: Colors.purple[700]!,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -695,7 +891,14 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
     );
   }
 
-  Widget _buildVenteCard(Map<String, dynamic> vente, int index) {
+  Widget _buildArticleCard(Map<String, dynamic> article, int index) {
+    final chiffreAffaires = _parseDouble(article['chiffreAffaires']);
+    final quantiteVendue = _parseInt(article['quantiteVendue']);
+    final nombreVentes = _parseInt(article['nombreVentes']);
+    final prixMoyen = _parseDouble(article['prixMoyen']);
+    final tauxMarge = _parseDouble(article['tauxMarge']);
+    final margeTotale = _parseDouble(article['margeTotale']);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
@@ -705,135 +908,186 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
+        onTap: () => _showArticleDetails(article),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2C3E50).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.shopping_bag,
-                      color: Color(0xFF2C3E50),
-                      size: 24,
-                    ),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2C3E50).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          vente['libelle']?.toString() ?? 'N/A',
+                  child: const Icon(
+                    Icons.shopping_bag,
+                    color: Color(0xFF2C3E50),
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        article['libelle']?.toString() ?? 'N/A',
+                        style: GoogleFonts.poppins(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF2C3E50),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$nombreVentes vente${nombreVentes > 1 ? 's' : ''} · $quantiteVendue unité${quantiteVendue > 1 ? 's' : ''}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _formatCurrency(chiffreAffaires),
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green[700],
+                      ),
+                    ),
+                    Text(
+                      'Moy. ${_formatCurrency(prixMoyen)}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildArticleMetric(
+                          icon: tauxMarge >= 0
+                              ? Icons.trending_up
+                              : tauxMarge < 0
+                              ? Icons.trending_down
+                              : Icons.trending_flat,
+                          label: 'Marge',
+                          value: '${tauxMarge.toStringAsFixed(1)}%',
+                          color: tauxMarge >= 0
+                              ? Colors.green[700]!
+                              : Colors.red[700]!,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildArticleMetric(
+                          icon: Icons.account_balance_wallet,
+                          label: 'Marge tot.',
+                          value: margeTotale >= 0
+                              ? _formatCurrencyCompact(margeTotale)
+                              : '-${_formatCurrencyCompact(-margeTotale)}',
+                          color: margeTotale >= 0
+                              ? Colors.green[700]!
+                              : Colors.red[700]!,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 14,
+                        color: Colors.grey[500],
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          _formatDate(
+                            article['derniereVente']?.toString(),
+                          ),
                           style: GoogleFonts.poppins(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF2C3E50),
+                            fontSize: 11,
+                            color: Colors.grey[600],
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Cmd #${vente['idCommande']}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: Colors.grey[500],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      PopupMenuButton<String>(
-                        tooltip: 'Actions',
-                        icon: const Icon(Icons.more_vert),
-                        onSelected: (value) {
-                          if (value == 'retirer') {
-                            _retirerProduitVente(vente);
-                          } else if (value == 'reduire') {
-                            _reduireQuantiteProduitVente(vente);
-                          }
-                        },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem<String>(
-                            value: 'retirer',
-                            child: Text('Retirer le produit'),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'reduire',
-                            child: Text('Reduire la quantite'),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        _formatCurrency(_parseDouble(vente['total'] ?? 0)),
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green[700],
-                        ),
-                      ),
-                      Text(
-                        '${vente['quantite']} × ${_formatCurrency(_parseDouble(vente['prixUnitaire'] ?? 0))}',
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: Colors.grey[500],
                         ),
                       ),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+            ),
+          ],
+        ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildArticleMetric({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 10,
+                  color: Colors.grey[500],
                 ),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(8),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                value,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color,
                 ),
-                child: Row(
-                  children: [
-                    Icon(Icons.access_time, size: 14, color: Colors.grey[500]),
-                    const SizedBox(width: 6),
-                    Text(
-                      _formatDate(vente['dateCreation']?.toString()),
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    const Spacer(),
-                    Expanded(
-                      child: Text(
-                        vente['nomSite']?.toString() ?? '',
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: Colors.grey[500],
-                        ),
-                        textAlign: TextAlign.right,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
         ),
-      ),
+      ],
     );
   }
 }

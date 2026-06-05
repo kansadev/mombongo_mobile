@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/ui/screens/caissier/commande_detail_screen.dart';
+import 'package:mombongo/utils/commande_invoice_helper.dart';
 import 'package:intl/intl.dart';
 
 class ClientPaiementsScreen extends StatefulWidget {
@@ -300,6 +302,38 @@ class _ClientPaiementsScreenState extends State<ClientPaiementsScreen> {
     return filters.isNotEmpty ? 'Filtres actifs: ${filters.join(", ")}' : '';
   }
 
+  void _openCommandeDetail(Map<String, dynamic> paiement) {
+    final idCommande = resolveIdCommandeFromPaiement(paiement);
+    if (idCommande == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune commande associée à ce paiement')),
+      );
+      return;
+    }
+
+    Navigator.push<bool>(
+      context,
+      MaterialPageRoute<bool>(
+        builder: (context) => CommandeDetailScreen(idCommande: idCommande),
+      ),
+    ).then((changed) {
+      if (changed == true && mounted) {
+        _loadPaiements(reset: true);
+      }
+    });
+  }
+
+  Future<void> _imprimerFacture(Map<String, dynamic> paiement) async {
+    final idCommande = resolveIdCommandeFromPaiement(paiement);
+    if (idCommande == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune commande associée à ce paiement')),
+      );
+      return;
+    }
+    await imprimerFactureCommande(context, idCommande);
+  }
+
   Widget _buildPaiementCard(Map<String, dynamic> paiement) {
     final montant =
         double.tryParse(paiement['montant']?.toString() ?? '0') ?? 0;
@@ -318,9 +352,7 @@ class _ClientPaiementsScreenState extends State<ClientPaiementsScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          // Action quand on clique sur la carte
-        },
+        onTap: () => _openCommandeDetail(paiement),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -447,6 +479,22 @@ class _ClientPaiementsScreenState extends State<ClientPaiementsScreen> {
                   ),
                 ],
               ),
+              if (paiement['idCommande'] != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => _imprimerFacture(paiement),
+                      icon: const Icon(Icons.print_outlined, size: 18),
+                      label: Text(
+                        'Imprimer',
+                        style: GoogleFonts.poppins(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),

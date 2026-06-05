@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/ui/widgets/fastFacturation.dart';
+import 'package:mombongo/utils/invoice_receipt_helper.dart';
 import 'package:provider/provider.dart';
 import '../../../services/app_currency_preference.dart';
 import '../../../services/cart_service.dart';
@@ -345,13 +346,12 @@ class ProductDetailScreen extends StatelessWidget {
             flex: 2,
             child: ElevatedButton.icon(
               onPressed: canAddToCart
-                  ? () {
+                  ? () async {
                       final cartService = context.read<CartService>();
 
-                      // Ajouter l'article au panier
                       cartService.addItem(productData);
+                      if (!context.mounted) return;
 
-                      // Afficher un message de confirmation
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
@@ -362,7 +362,6 @@ class ProductDetailScreen extends StatelessWidget {
                         ),
                       );
 
-                      // Rediriger selon le mode de vente
                       if (isFastSaleEnabled) {
                         // Mode vente rapide : ouvrir le bottomsheet
                         final currencyCode = AppCurrencyPreference.readCode(

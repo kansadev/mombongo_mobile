@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/services/cart_service.dart';
+import 'package:mombongo/utils/invoice_receipt_helper.dart';
 import 'package:mombongo/models/client.dart';
 import 'package:mombongo/models/utilisateur.dart';
 import 'package:pdf/pdf.dart';
@@ -17,6 +18,7 @@ class InvoiceGenerator {
   final dynamic saleResponse;
   final String invoiceNumber;
   final double? paidAmountOverride; // Optional override for paid amount
+  final List<CartItem> invoiceItems;
 
   InvoiceGenerator({
     required this.context,
@@ -25,7 +27,8 @@ class InvoiceGenerator {
     required this.saleResponse,
     required this.invoiceNumber,
     this.paidAmountOverride,
-  });
+    List<CartItem>? invoiceItems,
+  }) : invoiceItems = invoiceItems ?? cartService.items;
 
   Future<void> generateAndShow() async {
     debugPrint('=== DEBUT GENERATION FACTURE ===');
@@ -93,6 +96,9 @@ class InvoiceGenerator {
               _buildItemsTable(),
               _buildInvoiceSummary(),
               _buildPaymentInfo(),
+              buildPdfServiceDescriptionsBlock(
+                collectServiceDescriptionsForReceipt(invoiceItems),
+              ),
               _buildInvoiceFooter(),
             ],
           ),
@@ -284,7 +290,7 @@ class InvoiceGenerator {
                 ),
               ],
             ),
-            ...cartService.items.map((item) {
+            ...invoiceItems.map((item) {
               final articleName = item.article.libelle;
               final qty = item.quantity.toString();
               final price = tauxService.formatPrice(item.totalPrice);
@@ -293,12 +299,7 @@ class InvoiceGenerator {
                 children: [
                   pdf_lib.Padding(
                     padding: const pdf_lib.EdgeInsets.all(2),
-                    child: pdf_lib.Text(
-                      articleName,
-                      style: pdf_lib.TextStyle(fontSize: 8),
-                      textAlign: pdf_lib.TextAlign.left,
-                      maxLines: 2,
-                    ),
+                    child: buildPdfReceiptArticleNameCell(articleName),
                   ),
                   pdf_lib.Padding(
                     padding: const pdf_lib.EdgeInsets.all(2),

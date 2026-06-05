@@ -4,7 +4,7 @@ import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/ui/screens/finance/rapports_financiers_screen.dart';
 import 'package:mombongo/ui/screens/stock/stock_management_screen.dart';
 import 'package:mombongo/ui/screens/vente/sale_report_screen.dart';
-import 'package:mombongo/ui/screens/vente/vente_synthese_screen.dart';
+import 'package:mombongo/ui/screens/caissier/sales_journal_screen.dart';
 import '../../services/service_locator.dart';
 import 'profil_screen.dart';
 import 'gestionnaire/caissier_performance_screen.dart';
@@ -233,13 +233,16 @@ class _GestionnaireScreenState extends State<GestionnaireScreen> {
             tooltip: 'Charges du site',
           ),
           IconButton(
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              final changed = await Navigator.push<bool>(
                 context,
-                MaterialPageRoute(
+                MaterialPageRoute<bool>(
                   builder: (context) => const PaiementDashboardScreen(),
                 ),
               );
+              if (changed == true && mounted) {
+                _loadDashboardData();
+              }
             },
             icon: const Icon(Icons.dashboard, color: Colors.white),
             tooltip: 'Dashboard Paiements',
@@ -377,7 +380,7 @@ class _GestionnaireScreenState extends State<GestionnaireScreen> {
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) =>
-                                      const VenteSyntheseScreen(),
+                                      const SalesJournalScreen(),
                                 ),
                               );
                             },
@@ -429,13 +432,17 @@ class _GestionnaireScreenState extends State<GestionnaireScreen> {
                             title: 'Paiements',
                             icon: Icons.payment,
                             color: Colors.indigo,
-                            onTap: () {
-                              Navigator.push(
+                            onTap: () async {
+                              final changed = await Navigator.push<bool>(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (context) => const PaiementsScreen(),
+                                MaterialPageRoute<bool>(
+                                  builder: (context) =>
+                                      const PaiementsScreen(),
                                 ),
                               );
+                              if (changed == true && mounted) {
+                                _loadDashboardData();
+                              }
                             },
                           ),
                         ),
