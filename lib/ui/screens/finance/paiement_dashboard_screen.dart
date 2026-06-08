@@ -16,6 +16,10 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
   Map<String, dynamic>? _paiementsData;
   String? _errorMessage;
   bool _dataChanged = false;
+  bool _isGestionnaire = false;
+  bool _isLoadingCaissiers = false;
+  List<Map<String, dynamic>> _caissiers = [];
+  int? _selectedCaissierId;
 
   void _popWithResult() {
     Navigator.pop(context, _dataChanged);
@@ -25,7 +29,9 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute<bool>(
-        builder: (context) => const PaiementsScreen(),
+        builder: (context) => PaiementsScreen(
+          filterCaissierId: _isGestionnaire ? _selectedCaissierId : null,
+        ),
       ),
     );
     if (changed == true && mounted) {
@@ -37,6 +43,79 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    final currentUser = locator.authRepository.currentUser;
+    _isGestionnaire =
+        currentUser?.role.toUpperCase() == 'GESTIONNAIRE';
+    if (_isGestionnaire) {
+      _loadCaissiers();
+    }
+    _loadPaiementsData();
+  }
+
+  Future<void> _loadCaissiers() async {
+    setState(() => _isLoadingCaissiers = true);
+
+    try {
+      final currentUser = locator.authRepository.currentUser;
+      if (currentUser == null) {
+        throw Exception('Utilisateur non connecté');
+      }
+
+      final idSite = int.tryParse(currentUser.idSite) ?? 0;
+      if (idSite == 0) {
+        throw Exception('Site invalide');
+      }
+
+      final utilisateurs =
+          await locator.apiService.getAllUtilisateursBySite(idSite);
+      final caissiers = utilisateurs
+          .where(
+            (u) => (u['role'] as String?)?.toUpperCase() == 'CAISSIER',
+          )
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+
+      caissiers.sort((a, b) {
+        return _caissierDisplayName(a).compareTo(_caissierDisplayName(b));
+      });
+
+      if (!mounted) return;
+      setState(() {
+        _caissiers = caissiers;
+        _isLoadingCaissiers = false;
+      });
+    } catch (e) {
+      debugPrint('Erreur chargement caissiers: $e');
+      if (!mounted) return;
+      setState(() => _isLoadingCaissiers = false);
+    }
+  }
+
+  String _caissierDisplayName(Map<String, dynamic> caissier) {
+    final prenom = caissier['prenomUtilisateur']?.toString().trim() ?? '';
+    final nom = caissier['nomUtilisateur']?.toString().trim() ?? '';
+    final postNom = caissier['postNomUtilisateur']?.toString().trim() ?? '';
+    final fullName = [prenom, nom, postNom].where((s) => s.isNotEmpty).join(' ');
+    if (fullName.isNotEmpty) return fullName;
+    return caissier['login']?.toString() ?? 'Caissier';
+  }
+
+  int? _resolveIdUtilisateur() {
+    final currentUser = locator.authRepository.currentUser;
+    if (currentUser == null) return null;
+
+    final role = currentUser.role.toLowerCase();
+    if (role.contains('caissier')) {
+      return int.tryParse(currentUser.idUtilisateur);
+    }
+    if (_isGestionnaire) {
+      return _selectedCaissierId;
+    }
+    return null;
+  }
+
+  void _onCaissierChanged(int? caissierId) {
+    setState(() => _selectedCaissierId = caissierId);
     _loadPaiementsData();
   }
 
@@ -56,11 +135,7 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
 
       final idSociete = int.tryParse(currentUser.idSociete) ?? 0;
       final idSite = int.tryParse(currentUser.idSite) ?? 0;
-      final role = currentUser.role.toLowerCase();
-      final isCaissier = role.contains('caissier');
-      final idUtilisateur = isCaissier
-          ? int.tryParse(currentUser.idUtilisateur)
-          : null;
+      final idUtilisateur = _resolveIdUtilisateur();
 
       final data = await locator.apiService.getPaiementsDashboard(
         idSociete: idSociete,
@@ -192,6 +267,10 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_isGestionnaire) ...[
+            _buildCaissierFilter(),
+            const SizedBox(height: 16),
+          ],
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -407,6 +486,87 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
             ),
           ),
           const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCaissierFilter() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.person_search, size: 20, color: Colors.grey[700]),
+              const SizedBox(width: 8),
+              const Text(
+                'Filtrer par caissier',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF2C3E50),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (_isLoadingCaissiers)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else
+            DropdownButtonFormField<int?>(
+              value: _selectedCaissierId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                filled: true,
+                fillColor: const Color(0xFFF5F6FA),
+              ),
+              hint: const Text('Tous les caissiers'),
+              items: [
+                const DropdownMenuItem<int?>(
+                  value: null,
+                  child: Text('Tous les caissiers'),
+                ),
+                ..._caissiers.map((caissier) {
+                  final id = int.tryParse(
+                    caissier['idUtilisateur']?.toString() ?? '',
+                  );
+                  if (id == null) return null;
+                  return DropdownMenuItem<int?>(
+                    value: id,
+                    child: Text(_caissierDisplayName(caissier)),
+                  );
+                }).whereType<DropdownMenuItem<int?>>(),
+              ],
+              onChanged: _onCaissierChanged,
+            ),
         ],
       ),
     );

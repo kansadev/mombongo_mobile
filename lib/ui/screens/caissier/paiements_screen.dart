@@ -19,7 +19,10 @@ enum _VuePaiements {
 }
 
 class PaiementsScreen extends StatefulWidget {
-  const PaiementsScreen({super.key});
+  /// Filtre optionnel pour le gestionnaire (paiements d'un caissier précis).
+  final int? filterCaissierId;
+
+  const PaiementsScreen({super.key, this.filterCaissierId});
 
   @override
   State<PaiementsScreen> createState() => _PaiementsScreenState();
@@ -123,7 +126,14 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
       final nextPage = _currentPage + 1;
 
       final Map<String, dynamic> apiResponse;
-      if (isGestionnaire) {
+      final filterCaissierId = widget.filterCaissierId;
+      if (isGestionnaire && filterCaissierId != null) {
+        apiResponse = await locator.apiService.getPaiementsByCaissier(
+          filterCaissierId,
+          pageNumber: nextPage,
+          pageSize: _pageSize,
+        );
+      } else if (isGestionnaire) {
         if (idSite == 0) throw Exception('Site invalide');
         apiResponse = await locator.apiService.getPaiementsBySite(
           idSite,
@@ -201,7 +211,34 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
       final idSite = int.tryParse(currentUser.idSite) ?? 0;
 
       List<dynamic> allPaiements;
-      if (isGestionnaire) {
+      final filterCaissierId = widget.filterCaissierId;
+      if (isGestionnaire && filterCaissierId != null) {
+        _serverPagination = true;
+        debugPrint(
+          'Loading Paiements by caissier for gestionnaire: $filterCaissierId (page 1)',
+        );
+        _currentPage = 1;
+        _totalPages = 1;
+        _hasMorePages = true;
+
+        final apiResponse = await locator.apiService.getPaiementsByCaissier(
+          filterCaissierId,
+          pageNumber: 1,
+          pageSize: _pageSize,
+        );
+
+        final data = apiResponse['data'];
+        allPaiements = data is List ? List<dynamic>.from(data) : [];
+
+        _totalPages = _parsePaginationInt(apiResponse['totalPages'], 1);
+        _totalCount = _parsePaginationInt(
+          apiResponse['totalCount'],
+          allPaiements.length,
+        );
+        final hasNext = apiResponse['hasNextPage'];
+        _hasMorePages = hasNext is bool ? hasNext : _currentPage < _totalPages;
+        _currentPage = _parsePaginationInt(apiResponse['pageNumber'], 1);
+      } else if (isGestionnaire) {
         if (idSite == 0) {
           throw Exception('Site invalide : impossible de charger les paiements');
         }

@@ -18,7 +18,7 @@ class ApiService {
 
   // Environment selection: 0 = Test, 1 = Dev, 2 = Prod
   static const int environment =
-      0; // Modifier cette valeur pour changer d'environnement
+      2; // Modifier cette valeur pour changer d'environnement
 
   // Getter pour obtenir l'URL de base selon l'environnement
   String get baseUrl {
