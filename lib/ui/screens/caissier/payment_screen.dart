@@ -14,8 +14,6 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pdfLib;
 import 'package:printing/printing.dart';
 import 'dart:convert';
-import 'package:mombongo/utils/invoice_receipt_helper.dart';
-import 'package:mombongo/utils/ligne_commande_mapper.dart';
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -47,9 +45,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   static const List<String> _transactionLabels = [
     '', // Index 0 (unused)
     'Avance/Acompte', // 1
-    'Solde', // 2
-    'Complet', // 3
-    'Versement', // 4
+    'Solde',          // 2
+    'Complet',        // 3
+    'Versement',      // 4
   ];
 
   @override
@@ -353,9 +351,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
     BuildContext context,
     dynamic saleResponse,
     CartService cartService,
-    Client? selectedClient, {
-    List<CartItem>? invoiceItems,
-  }) async {
+    Client? selectedClient,
+  ) async {
     print('=== DEBUT GENERATION FACTURE ===');
     print('Sale Response: $saleResponse');
     print('Cart items count: ${cartService.items.length}');
@@ -391,7 +388,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         saleResponse,
         cartService,
         selectedClient,
-        invoiceItems: invoiceItems,
       );
       print('PDF created successfully');
 
@@ -438,9 +434,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<pdfLib.Document> _createInvoicePDF(
     dynamic saleResponse,
     CartService cartService,
-    Client? selectedClient, {
-    List<CartItem>? invoiceItems,
-  }) async {
+    Client? selectedClient,
+  ) async {
     print('=== DEBUT CREATION PDF ===');
     print('Sale response type: ${saleResponse.runtimeType}');
     print('Sale response: $saleResponse');
@@ -477,21 +472,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 _buildInvoiceInfo(saleResponse, currentUser),
 
                 // Section détails articles (aligné à gauche)
-                _buildItemsTable(
-                  invoiceItems ?? cartService.items,
-                ),
+                _buildItemsTable(cartService),
 
                 // Section totaux (aligné à gauche)
                 _buildInvoiceSummary(cartService),
 
                 // Section paiement (aligné à gauche)
                 _buildPaymentInfo(saleResponse, cartService, selectedClient),
-
-                buildPdfServiceDescriptionsBlock(
-                  collectServiceDescriptionsForReceipt(
-                    invoiceItems ?? cartService.items,
-                  ),
-                ),
 
                 // Footer avec message (centré)
                 _buildInvoiceFooter(),
@@ -607,12 +594,32 @@ class _PaymentScreenState extends State<PaymentScreen> {
             textAlign: pdfLib.TextAlign.center,
           ),
         ),
+        if (saleResponse is Map && saleResponse['offline'] == true) ...[
+          pdfLib.SizedBox(height: 4),
+          pdfLib.Center(
+            child: pdfLib.Text(
+              '*** VENTE HORS LIGNE ***',
+              style: pdfLib.TextStyle(
+                fontSize: 8,
+                fontWeight: pdfLib.FontWeight.bold,
+              ),
+              textAlign: pdfLib.TextAlign.center,
+            ),
+          ),
+          pdfLib.Center(
+            child: pdfLib.Text(
+              'Synchronisation en attente',
+              style: pdfLib.TextStyle(fontSize: 7),
+              textAlign: pdfLib.TextAlign.center,
+            ),
+          ),
+        ],
         pdfLib.SizedBox(height: 5),
       ],
     );
   }
 
-  pdfLib.Widget _buildItemsTable(List<CartItem> items) {
+  pdfLib.Widget _buildItemsTable(CartService cartService) {
     final currencyCode = AppCurrencyPreference.readCode(
       locator.databaseService,
     );
@@ -680,7 +687,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ],
             ),
             // Lignes des articles
-            ...items.map((item) {
+            ...cartService.items.map((item) {
               final articleName = item.article.libelle;
               final qty = item.quantity.toString();
               final price = locator.tauxService.formatPrice(item.totalPrice);
@@ -689,7 +696,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 children: [
                   pdfLib.Padding(
                     padding: const pdfLib.EdgeInsets.all(2),
-                    child: buildPdfReceiptArticleNameCell(articleName),
+                    child: pdfLib.Text(
+                      articleName,
+                      style: pdfLib.TextStyle(fontSize: 8),
+                      textAlign: pdfLib.TextAlign.left,
+                      maxLines: 2,
+                    ),
                   ),
                   pdfLib.Padding(
                     padding: const pdfLib.EdgeInsets.all(2),
@@ -718,16 +730,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   pdfLib.Widget _buildInvoiceSummary(CartService cartService) {
+    // Le convertisseur/formateur tient compte du taux en cours
     final tauxService = locator.tauxService;
-    final total = cartService.total;
+
+    // Calcul des totaux
+    final subtotal = cartService.subtotal;
+    final tvaAmount = cartService.items.fold(0.0, (sum, item) {
+      final itemHT = item.totalHT;
+      final tva = item.article.tva;
+      return sum + (itemHT * tva / 100);
+    });
+    final totalTTC = subtotal + tvaAmount;
 
     return pdfLib.Column(
       crossAxisAlignment: pdfLib.CrossAxisAlignment.start,
       children: [
         pdfLib.Text(
-          'TOTAL:',
+          'TOTAUX:',
           style: pdfLib.TextStyle(
-            fontSize: 10,
+            fontSize: 9,
             fontWeight: pdfLib.FontWeight.bold,
           ),
           textAlign: pdfLib.TextAlign.left,
@@ -736,15 +757,37 @@ class _PaymentScreenState extends State<PaymentScreen> {
         pdfLib.Row(
           mainAxisAlignment: pdfLib.MainAxisAlignment.spaceBetween,
           children: [
+            pdfLib.Text('HT:', style: pdfLib.TextStyle(fontSize: 8)),
             pdfLib.Text(
-              'Total:',
+              '${tauxService.formatPrice(subtotal)}',
+              style: pdfLib.TextStyle(fontSize: 8),
+            ),
+          ],
+        ),
+        pdfLib.SizedBox(height: 3),
+        pdfLib.Row(
+          mainAxisAlignment: pdfLib.MainAxisAlignment.spaceBetween,
+          children: [
+            pdfLib.Text('TVA:', style: pdfLib.TextStyle(fontSize: 8)),
+            pdfLib.Text(
+              '${tauxService.formatPrice(tvaAmount)}',
+              style: pdfLib.TextStyle(fontSize: 8),
+            ),
+          ],
+        ),
+        pdfLib.SizedBox(height: 3),
+        pdfLib.Row(
+          mainAxisAlignment: pdfLib.MainAxisAlignment.spaceBetween,
+          children: [
+            pdfLib.Text(
+              'TOTAL:',
               style: pdfLib.TextStyle(
                 fontSize: 10,
                 fontWeight: pdfLib.FontWeight.bold,
               ),
             ),
             pdfLib.Text(
-              '${tauxService.formatPrice(total)}',
+              '${tauxService.formatPrice(totalTTC)}',
               style: pdfLib.TextStyle(
                 fontSize: 10,
                 fontWeight: pdfLib.FontWeight.bold,
@@ -765,17 +808,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
     Client? client,
   ) {
     // prepare currency formatting
-    final currencyCode = AppCurrencyPreference.readCode(
-      locator.databaseService,
-    );
+    final currencyCode = AppCurrencyPreference.readCode(locator.databaseService);
     final currencyFormat = AppCurrencyPreference.formatterFor(currencyCode);
     final currencySymbol = AppCurrencyPreference.symbolFor(currencyCode);
 
     final paymentMethod = saleResponse['modePaiement'] ?? 'Espèces';
     // Use _paidAmount from the state (user entered amount)
-    final paidAmount = _paidAmount > 0
-        ? _paidAmount
-        : (saleResponse['montant'] ?? cartService.total);
+    final paidAmount = _paidAmount > 0 ? _paidAmount : (saleResponse['montant'] ?? cartService.total);
     final ref = saleResponse['referencePaiement'] ?? _invoiceNumber;
     final totalAmount = cartService.total;
     final remaining = (totalAmount - paidAmount).clamp(0.0, double.infinity);
@@ -870,9 +909,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             pdfLib.Text(
               '${currencySymbol}${currencyFormat.format(paidAmount)}',
               style: pdfLib.TextStyle(
-                fontSize: 7,
-                fontWeight: pdfLib.FontWeight.bold,
-              ),
+                  fontSize: 7, fontWeight: pdfLib.FontWeight.bold),
             ),
           ],
         ),
@@ -888,9 +925,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               pdfLib.Text(
                 '${currencySymbol}${currencyFormat.format(remaining)}',
                 style: pdfLib.TextStyle(
-                  fontSize: 7,
-                  fontWeight: pdfLib.FontWeight.bold,
-                ),
+                    fontSize: 7, fontWeight: pdfLib.FontWeight.bold),
               ),
             ],
           ),
@@ -1258,7 +1293,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 child: Text(
                   'Compris',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -1275,7 +1312,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Acompte de ${locator.tauxService.formatPrice(_paidAmount)} enregistré '
+            'Acompte de ${locator.tauxService.formatPrice(_paidAmount)} enregistré ' 
             '(total ${locator.tauxService.formatPrice(total)})',
           ),
           backgroundColor: Colors.orange,
@@ -1285,11 +1322,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
 
     try {
-      await collectOptionalServiceDescriptions(context, cartService);
-      if (!mounted) return;
-
-      final invoiceItems = snapshotCartItemsForReceipt(cartService);
-
       // Prepare sale data
       final currentUser = locator.authRepository.currentUser;
       debugPrint('Current user: ${currentUser?.nomComplet}');
@@ -1310,11 +1342,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         'Address parsed - Province: $province, Ville: $ville, Commune: $commune',
       );
 
-      // Use selected client if available, otherwise use defaults.
-      // Toujours envoyer idClient quand connu : évite qu’API fasse un lookup ambigu
-      // (téléphone / nom) qui pourrait lier la vente au mauvais client.
+      // Use selected client if available, otherwise use defaults
       final saleData = {
-        if (_selectedClient != null) 'idClient': _selectedClient!.id,
         'nom': _selectedClient?.nom ?? 'Client',
         'prenom': _selectedClient?.prenom ?? 'Anonyme',
         'genre': _selectedClient?.genre ?? 'M',
@@ -1346,7 +1375,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
         'typeTransaction': _typeTransaction,
         'catalogueId': int.tryParse("0")?.toString(),
         'statutCommande': _paidAmount < total ? 'EN ATTENTE' : 'VALIDEE',
-        'lignesCommandes': cartItemsToLignesCommandes(invoiceItems),
+        'lignesCommandes': cartService.items
+            .map(
+              (item) => {
+                'idStock': item.article.idStock,
+                'quantite': item.quantity,
+                'prixUnitaire': item.unitPrice,
+                'tva': item.article.tva,
+                'remise': item.discountPercentage,
+              },
+            )
+            .toList(),
       };
 
       debugPrint('Sale data prepared: ${saleData.keys}');
@@ -1355,15 +1394,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
       debugPrint('Total amount: ${saleData['montant']}');
       debugPrint('Invoice number: $_invoiceNumber');
 
-      // Record the sale using the correct API endpoint
-      debugPrint('Calling API to record sale...');
+      debugPrint('Calling VenteRepository to record sale...');
       // log payload for debugging
       debugPrint('saleData JSON: ${jsonEncode(saleData)}');
-      final response = await locator.apiService.enregistrerVente(saleData);
-      debugPrint('API Response received: $response');
-      debugPrint('Response type: ${response.runtimeType}');
+      final result = await locator.venteRepository.enregistrerVente(saleData);
+      final response = result.response;
+      debugPrint('Sale result offline=${result.isOffline}: $response');
 
-      if (response['success'] == true) {
+      // Notifie le SyncService pour déclencher le rafraîchissement du dashboard
+      // (même en ligne, pour éviter d'attendre un reload de la page).
+      locator.syncService.refreshPending();
+
+      if (result.isOffline) {
+        debugPrint('Sale queued offline: ${result.reference}');
+      } else if (response['success'] == true) {
         debugPrint('Sale recorded successfully!');
       } else {
         debugPrint('Warning: Sale response indicates failure: $response');
@@ -1377,7 +1421,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         response,
         cartService,
         _selectedClient,
-        invoiceItems: invoiceItems,
       );
       debugPrint('Invoice generation completed');
 
@@ -1396,9 +1439,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Paiement effectué avec succès! Numéro de facture: $_invoiceNumber',
+              result.isOffline
+                  ? 'Vente hors ligne enregistrée (sync en attente). Facture: ${result.reference}'
+                  : 'Paiement effectué avec succès! Numéro de facture: $_invoiceNumber',
             ),
-            backgroundColor: Colors.green,
+            backgroundColor: result.isOffline ? Colors.orange : Colors.green,
           ),
         );
       }
@@ -1585,16 +1630,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           ),
                         ),
                         Text(
-                          locator.tauxService.formatPrice(
-                            cartService.subtotal -
-                                (cartService.subtotal *
-                                    (cartService.items.fold<double>(
-                                          0.0,
-                                          (sum, item) =>
-                                              sum + item.discountPercentage,
-                                        ) /
-                                        cartService.items.length)),
-                          ),
+                          locator.tauxService.formatPrice(cartService.subtotal - (cartService.subtotal * (cartService.items.fold<double>(0.0, (sum, item) => sum + item.discountPercentage) / cartService.items.length))),
                           style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
@@ -1614,9 +1650,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           ),
                         ),
                         Text(
-                          locator.tauxService.formatPrice(
-                            cartService.subtotal - cartService.total,
-                          ), // Approximation
+                          locator.tauxService.formatPrice(cartService.subtotal - cartService.total), // Approximation
                           style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
@@ -1975,9 +2009,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           ),
                         ),
                         Text(
-                          locator.tauxService.formatPrice(
-                            _paidAmount - cartService.total,
-                          ),
+                          locator.tauxService.formatPrice(_paidAmount - cartService.total),
                           style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w500,

@@ -119,7 +119,18 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
     super.initState();
     _loadPreferences();
     _loadDevises();
+    locator.syncService.addListener(_handleSyncStateChanged);
   }
+  @override
+  void dispose() {
+    locator.syncService.removeListener(_handleSyncStateChanged);
+    super.dispose();
+  }
+
+  void _handleSyncStateChanged() {
+    if (mounted) setState(() {});
+  }
+
 
   Future<void> _loadDevises() async {
     final currentUser = locator.authRepository.currentUser;
@@ -379,6 +390,7 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
   @override
   Widget build(BuildContext context) {
     final currentUser = locator.authRepository.currentUser;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       body: currentUser == null
@@ -427,7 +439,7 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.3),
+                                      color: Colors.black.withValues(alpha: 0.3),
                                       blurRadius: 10,
                                       offset: const Offset(0, 5),
                                     ),
@@ -555,11 +567,11 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                       const SizedBox(height: 12),
                       Container(
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: cs.surface,
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black.withValues(alpha: 0.05),
                               blurRadius: 10,
                               offset: const Offset(0, 2),
                             ),
@@ -568,42 +580,42 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                         child: Column(
                           children: [
                             SwitchListTile(
-                              title: const Text(
+                              title: Text(
                                 'Vente rapide',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF2C3E50),
+                                  color: cs.onSurface,
                                 ),
                               ),
                               subtitle: Text(
                                 'Alternative au panier (vente en une seule étape)',
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: Colors.grey[600],
+                                  color: cs.onSurfaceVariant,
                                 ),
                               ),
                               value: _fastSaleEnabled,
-                              activeColor: Theme.of(
+                              activeThumbColor: Theme.of(
                                 context,
                               ).colorScheme.tertiary,
                               onChanged: _setFastSaleEnabled,
                             ),
-                            Divider(height: 1, color: Colors.grey[200]),
+                            Divider(height: 1, color: cs.outlineVariant),
                             SwitchListTile(
-                              title: const Text(
+                              title: Text(
                                 'Articles avec stock',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF2C3E50),
+                                  color: cs.onSurface,
                                 ),
                               ),
                               subtitle: Text(
                                 'Afficher par défaut les articles avec stock',
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: Colors.grey[600],
+                                  color: cs.onSurfaceVariant,
                                 ),
                               ),
                               value: _articleFilterWithStock,
@@ -642,7 +654,10 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                                           );
 
                                       return DropdownButtonFormField<String>(
-                                        value: selectedCurrency,
+                                        key: ValueKey(
+                                          'currency_${selectedCurrency ?? 'none'}',
+                                        ),
+                                        initialValue: selectedCurrency,
                                         hint: Text(
                                           _isLoadingDevises
                                               ? 'Chargement...'
@@ -743,11 +758,11 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                             const SizedBox(height: 12),
                             Container(
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: cs.surface,
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
+                                    color: Colors.black.withValues(alpha: 0.05),
                                     blurRadius: 10,
                                     offset: const Offset(0, 2),
                                   ),
@@ -767,12 +782,12 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                                           size: 20,
                                         ),
                                         const SizedBox(width: 8),
-                                        const Text(
+                                        Text(
                                           'Logo de l\'entreprise',
                                           style: TextStyle(
                                             fontSize: 15,
                                             fontWeight: FontWeight.w600,
-                                            color: Color(0xFF2C3E50),
+                                            color: cs.onSurface,
                                           ),
                                         ),
                                       ],
@@ -782,7 +797,7 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                                       'Ce logo apparaîtra dans l\'en-tête du reçu (préférer image noir et blanc)',
                                       style: TextStyle(
                                         fontSize: 13,
-                                        color: Colors.grey[600],
+                                    color: cs.onSurfaceVariant,
                                       ),
                                     ),
                                     const SizedBox(height: 12),
@@ -792,7 +807,7 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                                         width: double.infinity,
                                         decoration: BoxDecoration(
                                           border: Border.all(
-                                            color: Colors.grey.shade300,
+                                        color: cs.outlineVariant,
                                           ),
                                           borderRadius: BorderRadius.circular(
                                             8,
@@ -939,6 +954,42 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                             ),
                             const SizedBox(height: 12),
                             _buildActionCard(
+                              icon: locator.syncService.isOnline
+                                  ? Icons.sync
+                                  : Icons.cloud_off,
+                              title: 'Synchronisation manuelle',
+                              subtitle: locator.syncService.isOnline
+                                  ? (locator.syncService.pendingCount > 0
+                                      ? '${locator.syncService.pendingCount} vente(s) en attente de synchronisation'
+                                      : 'Aucune vente en attente, vous pouvez quand même relancer la synchronisation')
+                                  : 'Hors ligne pour le moment, la synchronisation reprendra au retour du réseau',
+                              color: locator.syncService.isOnline
+                                  ? Colors.blue
+                                  : Colors.grey,
+                              onTap: () async {
+                                final messenger = ScaffoldMessenger.of(context);
+                                final result = await locator.syncService
+                                    .syncNow();
+                                if (!mounted) return;
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      result.remaining == 0 &&
+                                              result.synced == 0 &&
+                                              result.failed == 0
+                                          ? (locator.syncService.isOnline
+                                              ? 'Aucune donnée à synchroniser'
+                                              : 'Synchronisation impossible hors ligne')
+                                          : result.failed == 0
+                                              ? '${result.synced} vente(s) synchronisée(s)'
+                                              : '${result.synced} synchronisée(s), ${result.failed} échec(s), ${result.remaining} restante(s)',
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _buildActionCard(
                               icon: Icons.lock,
                               title: 'Changer le mot de passe',
                               subtitle: 'Mettre à jour votre mot de passe',
@@ -1021,12 +1072,13 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
   }
 
   Widget _buildSectionTitle(String title) {
+    final cs = Theme.of(context).colorScheme;
     return Text(
       title,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 18,
         fontWeight: FontWeight.bold,
-        color: Color(0xFF2C3E50),
+        color: cs.onSurface,
       ),
     );
   }
@@ -1036,13 +1088,14 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
     required Color iconColor,
     required List<Widget> children,
   }) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -1054,7 +1107,7 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
+              color: iconColor.withValues(alpha: 0.1),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
@@ -1089,12 +1142,13 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
     required String label,
     required String value,
   }) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: Colors.grey[600]),
+          Icon(icon, size: 20, color: cs.onSurfaceVariant),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1104,17 +1158,17 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                   label,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.grey[600],
+                    color: cs.onSurfaceVariant,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF2C3E50),
+                    color: cs.onSurface,
                   ),
                 ),
               ],
@@ -1126,7 +1180,8 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
   }
 
   Widget _buildDivider() {
-    return Divider(height: 24, thickness: 1, color: Colors.grey[200]);
+    final cs = Theme.of(context).colorScheme;
+    return Divider(height: 24, thickness: 1, color: cs.outlineVariant);
   }
 
   Widget _buildActionCard({
@@ -1136,18 +1191,19 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
     required Color color,
     required VoidCallback onTap,
   }) {
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.2), width: 1),
+          border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 2),
             ),
@@ -1158,7 +1214,7 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 24),
@@ -1170,21 +1226,24 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF2C3E50),
+                      color: cs.onSurface,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: Colors.grey[400]),
+            Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
           ],
         ),
       ),

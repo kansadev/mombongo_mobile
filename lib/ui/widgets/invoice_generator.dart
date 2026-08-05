@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/services/cart_service.dart';
-import 'package:mombongo/utils/invoice_receipt_helper.dart';
 import 'package:mombongo/models/client.dart';
 import 'package:mombongo/models/utilisateur.dart';
 import 'package:pdf/pdf.dart';
@@ -18,7 +17,6 @@ class InvoiceGenerator {
   final dynamic saleResponse;
   final String invoiceNumber;
   final double? paidAmountOverride; // Optional override for paid amount
-  final List<CartItem> invoiceItems;
 
   InvoiceGenerator({
     required this.context,
@@ -27,8 +25,7 @@ class InvoiceGenerator {
     required this.saleResponse,
     required this.invoiceNumber,
     this.paidAmountOverride,
-    List<CartItem>? invoiceItems,
-  }) : invoiceItems = invoiceItems ?? cartService.items;
+  });
 
   Future<void> generateAndShow() async {
     debugPrint('=== DEBUT GENERATION FACTURE ===');
@@ -96,9 +93,6 @@ class InvoiceGenerator {
               _buildItemsTable(),
               _buildInvoiceSummary(),
               _buildPaymentInfo(),
-              buildPdfServiceDescriptionsBlock(
-                collectServiceDescriptionsForReceipt(invoiceItems),
-              ),
               _buildInvoiceFooter(),
             ],
           ),
@@ -224,7 +218,29 @@ class InvoiceGenerator {
             textAlign: pdf_lib.TextAlign.center,
           ),
         ),
-        pdf_lib.SizedBox(height: 5),
+        if (saleResponse is Map && saleResponse['offline'] == true) ...[
+          pdf_lib.SizedBox(height: 4),
+          pdf_lib.Center(
+            child: pdf_lib.Text(
+              '*** VENTE HORS LIGNE ***',
+              style: pdf_lib.TextStyle(
+                fontSize: 8,
+                fontWeight: pdf_lib.FontWeight.bold,
+              ),
+              textAlign: pdf_lib.TextAlign.center,
+            ),
+          ),
+          pdf_lib.Center(
+            child: pdf_lib.Text(
+              'Synchronisation en attente',
+              style: pdf_lib.TextStyle(fontSize: 7),
+              textAlign: pdf_lib.TextAlign.center,
+            ),
+          ),
+        ],
+        pdf_lib.SizedBox(height: 4),
+        pdf_lib.Center(child: pdf_lib.Divider()),
+        pdf_lib.SizedBox(height: 4),
       ],
     );
   }
@@ -290,7 +306,7 @@ class InvoiceGenerator {
                 ),
               ],
             ),
-            ...invoiceItems.map((item) {
+            ...cartService.items.map((item) {
               final articleName = item.article.libelle;
               final qty = item.quantity.toString();
               final price = tauxService.formatPrice(item.totalPrice);
@@ -299,7 +315,12 @@ class InvoiceGenerator {
                 children: [
                   pdf_lib.Padding(
                     padding: const pdf_lib.EdgeInsets.all(2),
-                    child: buildPdfReceiptArticleNameCell(articleName),
+                    child: pdf_lib.Text(
+                      articleName,
+                      style: pdf_lib.TextStyle(fontSize: 8),
+                      textAlign: pdf_lib.TextAlign.left,
+                      maxLines: 2,
+                    ),
                   ),
                   pdf_lib.Padding(
                     padding: const pdf_lib.EdgeInsets.all(2),
@@ -328,15 +349,23 @@ class InvoiceGenerator {
   }
 
   pdf_lib.Widget _buildInvoiceSummary() {
-    final total = cartService.total;
+    // we use the rate-aware helper so that totals are converted properly
+    // when the user has chosen CDF.
+    final subtotal = cartService.subtotal;
+    final tvaAmount = cartService.items.fold(0.0, (sum, item) {
+      final itemHT = item.totalHT;
+      final tva = item.article.tva;
+      return sum + (itemHT * tva / 100);
+    });
+    final totalTTC = subtotal + tvaAmount;
 
     return pdf_lib.Column(
       crossAxisAlignment: pdf_lib.CrossAxisAlignment.start,
       children: [
         pdf_lib.Text(
-          'TOTAL:',
+          'TOTAUX:',
           style: pdf_lib.TextStyle(
-            fontSize: 10,
+            fontSize: 9,
             fontWeight: pdf_lib.FontWeight.bold,
           ),
           textAlign: pdf_lib.TextAlign.left,
@@ -345,15 +374,37 @@ class InvoiceGenerator {
         pdf_lib.Row(
           mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
           children: [
+            pdf_lib.Text('HT:', style: pdf_lib.TextStyle(fontSize: 8)),
             pdf_lib.Text(
-              'Total:',
+              AppCurrencyPreference.formatCurrency(subtotal),
+              style: pdf_lib.TextStyle(fontSize: 8),
+            ),
+          ],
+        ),
+        pdf_lib.SizedBox(height: 3),
+        pdf_lib.Row(
+          mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
+          children: [
+            pdf_lib.Text('TVA:', style: pdf_lib.TextStyle(fontSize: 8)),
+            pdf_lib.Text(
+              AppCurrencyPreference.formatCurrency(tvaAmount),
+              style: pdf_lib.TextStyle(fontSize: 8),
+            ),
+          ],
+        ),
+        pdf_lib.SizedBox(height: 3),
+        pdf_lib.Row(
+          mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
+          children: [
+            pdf_lib.Text(
+              'TOTAL:',
               style: pdf_lib.TextStyle(
                 fontSize: 10,
                 fontWeight: pdf_lib.FontWeight.bold,
               ),
             ),
             pdf_lib.Text(
-              AppCurrencyPreference.formatCurrency(total),
+              AppCurrencyPreference.formatCurrency(totalTTC),
               style: pdf_lib.TextStyle(
                 fontSize: 10,
                 fontWeight: pdf_lib.FontWeight.bold,
@@ -370,7 +421,7 @@ class InvoiceGenerator {
 
   pdf_lib.Widget _buildPaymentInfo() {
     final paymentMethod = saleResponse is Map
-        ? (saleResponse['modePaiement'] ?? 'Espèces')
+        ? (saleResponse['modePaiement'] ?? 'Espèces').toString()
         : 'Espèces';
     // Use paidAmountOverride if provided, otherwise try to get from saleResponse
     final double paidAmount;
@@ -382,15 +433,21 @@ class InvoiceGenerator {
           : cartService.total;
     }
 
-    // Total amount from cart (TVA already included by backend)
+    // Use the same total as displayed in the invoice summary (with TVA)
     final tauxService = locator.tauxService;
-    final totalAmount = cartService.total;
+    final subtotal = cartService.subtotal;
+    final tvaAmount = cartService.items.fold(0.0, (sum, item) {
+      final itemHT = item.totalHT;
+      final tva = item.article.tva;
+      return sum + (itemHT * tva / 100);
+    });
+    final totalAmount = subtotal + tvaAmount;
     final remaining = (totalAmount - paidAmount).clamp(0.0, double.infinity);
     final ref = saleResponse is Map
         ? (saleResponse['referencePaiement'] ?? invoiceNumber)
         : invoiceNumber;
     final typeTransaction = saleResponse is Map
-        ? (saleResponse['typeTransaction'] ?? 'Complete')
+        ? (saleResponse['typeTransaction'] ?? 'Complete').toString()
         : 'Complete';
 
     final clientName = selectedClient != null

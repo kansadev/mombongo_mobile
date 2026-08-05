@@ -4,7 +4,10 @@ import 'api_service.dart';
 import 'database_service.dart';
 import 'cache_strategy.dart';
 import 'auth_repository.dart';
+import 'connectivity_service.dart';
+import 'sync_service.dart';
 import 'package:mombongo/models/article_data.dart';
+import 'package:mombongo/repositories/vente_repository.dart';
 import 'cart_service.dart';
 import 'taux_service.dart';
 
@@ -18,6 +21,9 @@ class ServiceLocator {
   late CacheStrategy _cacheStrategy;
   late AuthRepository _authRepository;
   late TauxService _tauxService;
+  late ConnectivityService _connectivityService;
+  late VenteRepository _venteRepository;
+  late SyncService _syncService;
 
   bool _isInitialized = false;
 
@@ -26,6 +32,9 @@ class ServiceLocator {
   CacheStrategy get cacheStrategy => _cacheStrategy;
   AuthRepository get authRepository => _authRepository;
   TauxService get tauxService => _tauxService;
+  ConnectivityService get connectivityService => _connectivityService;
+  VenteRepository get venteRepository => _venteRepository;
+  SyncService get syncService => _syncService;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -38,28 +47,37 @@ class ServiceLocator {
       if (!Hive.isAdapterRegistered(20)) {
         Hive.registerAdapter(CartItemAdapter());
       }
-      
+
       // Initialize database first
       _databaseService = DatabaseService();
       await _databaseService.init();
-      
+
       // Clear old cache that might cause conflicts
       await _databaseService.clearOldArticleCache();
-      
+
       // Initialize API service
       _apiService = ApiService();
-      
+
+      // Connectivity
+      _connectivityService = ConnectivityService();
+      await _connectivityService.initialize();
+
       // Initialize cache strategy
       _cacheStrategy = CacheStrategy(_apiService, _databaseService);
-      
+
       // Initialize auth repository
       _authRepository = AuthRepository(_apiService, _databaseService);
-      
+
       // Initialize taux service
       _tauxService = TauxService(_databaseService);
-      
+
+      // Vente + sync
+      _venteRepository = VenteRepository();
+      _syncService = SyncService(_connectivityService, _venteRepository);
+      await _syncService.initialize();
+
       _isInitialized = true;
-      
+
       if (kDebugMode) {
         print('All services initialized successfully');
       }
@@ -73,9 +91,11 @@ class ServiceLocator {
 
   Future<void> dispose() async {
     if (_isInitialized) {
+      _syncService.dispose();
+      await _connectivityService.dispose();
       await _databaseService.close();
       _isInitialized = false;
-      
+
       if (kDebugMode) {
         print('Services disposed');
       }

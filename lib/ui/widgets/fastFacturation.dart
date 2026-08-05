@@ -11,26 +11,18 @@ import 'package:mombongo/ui/screens/caissier/create_client_screen.dart';
 import 'package:mombongo/models/article_data.dart';
 import 'package:mombongo/ui/widgets/invoice_generator.dart';
 import 'package:provider/provider.dart';
-import 'package:mombongo/utils/invoice_receipt_helper.dart';
-import 'package:mombongo/utils/ligne_commande_mapper.dart';
 
 class FastSaleBottomSheet extends StatefulWidget {
   final NumberFormat currencyFormat;
   final String currencySymbol;
   final ArticleData? initialFocusedArticle;
   final VoidCallback onClose;
-  final VoidCallback? onSaleCompleted;
-  final Future<bool> Function(BuildContext context, CartService cartService)?
-      beforeConfirmSale;
 
-  const FastSaleBottomSheet({
-    super.key,
+  const FastSaleBottomSheet({super.key, 
     required this.currencyFormat,
     required this.currencySymbol,
     required this.initialFocusedArticle,
     required this.onClose,
-    this.onSaleCompleted,
-    this.beforeConfirmSale,
   });
 
   @override
@@ -204,7 +196,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
     final paidAmount = double.tryParse(_paidAmountController.text) ?? 0.0;
     final saleInvoiceNumber = _invoiceNumber;
     final isPartialPayment = paidAmount < total;
-
+    
     // Le paiement partiel n'est autorisé que pour les clients inscrits
     if (isPartialPayment && _selectedClient == null) {
       showDialog(
@@ -296,7 +288,9 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
                 ),
                 child: Text(
                   'Compris',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -306,21 +300,19 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
       );
       return;
     }
-
+    
     final resolvedTypeTransaction = isPartialPayment
         ? _typeTransactionAcompte
         : (_typeTransaction == _typeTransactionAcompte
-              ? _typeTransactionComplet
-              : _typeTransaction);
+            ? _typeTransactionComplet
+            : _typeTransaction);
 
     if (cartService.isEmpty) {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Panier vide'),
-          content: const Text(
-            'Le panier est vide. Ajoutez des articles avant de valider.',
-          ),
+          content: const Text('Le panier est vide. Ajoutez des articles avant de valider.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -332,20 +324,12 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
       return;
     }
 
-    if (widget.beforeConfirmSale != null) {
-      final descriptionsOk = await widget.beforeConfirmSale!(
-        context,
-        cartService,
-      );
-      if (!descriptionsOk || !mounted) return;
-    }
-
     if (isPartialPayment) {
       // allow a deposit; user will pay the remainder later
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Acompte de ${locator.tauxService.formatPrice(paidAmount)} enregistré '
+            'Acompte de ${locator.tauxService.formatPrice(paidAmount)} enregistré ' 
             '(total ${locator.tauxService.formatPrice(total)})',
           ),
           backgroundColor: Colors.orange,
@@ -356,6 +340,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
 
     // note: we no longer require equality between paidAmount and total
     // because partial payments are allowed
+
 
     setState(() {
       _isProcessing = true;
@@ -375,7 +360,6 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
           : 'Inconnue';
 
       final saleData = {
-        if (_selectedClient != null) 'idClient': _selectedClient!.id,
         'nom': _selectedClient?.nom ?? 'Client',
         'prenom': _selectedClient?.prenom ?? 'Anonyme',
         'genre': _selectedClient?.genre ?? 'M',
@@ -410,20 +394,26 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
         // use same defaults as sample request
         'typeTransaction': resolvedTypeTransaction,
         'catalogueId': int.tryParse('0')?.toString(),
+        'lignesCommandes': cartService.items
+            .map(
+              (item) => {
+                'idStock': item.article.idStock,
+                'quantite': item.quantity,
+                'prixUnitaire': item.unitPrice,
+                'tva': item.article.tva,
+                'remise': item.discountPercentage,
+              },
+            )
+            .toList(),
       };
-
-      final invoiceItems = snapshotCartItemsForReceipt(cartService);
-      for (final item in invoiceItems) {
-        debugPrint(
-          '[Receipt] Snapshot "${item.article.libelle}" '
-          'desc="${item.description ?? ''}" service=${item.isService}',
-        );
-      }
-      saleData['lignesCommandes'] = cartItemsToLignesCommandes(invoiceItems);
 
       print('Sale data prepared: ${saleData.keys}');
       print('saleData JSON: ${jsonEncode(saleData)}');
-      final response = await locator.apiService.enregistrerVente(saleData);
+      final result = await locator.venteRepository.enregistrerVente(saleData);
+      final response = result.response;
+
+      // Déclenche le rafraîchissement du dashboard caissier
+      locator.syncService.refreshPending();
 
       if (mounted && context.mounted) {
         final invoice = InvoiceGenerator(
@@ -431,9 +421,10 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
           cartService: cartService,
           selectedClient: _selectedClient,
           saleResponse: response,
-          invoiceNumber: saleInvoiceNumber,
+          invoiceNumber: result.reference.isNotEmpty
+              ? result.reference
+              : saleInvoiceNumber,
           paidAmountOverride: paidAmount,
-          invoiceItems: invoiceItems,
         );
         await invoice.generateAndShow();
       }
@@ -441,11 +432,14 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
       cartService.clearAfterPayment();
 
       if (mounted) {
-        widget.onSaleCompleted?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Vente validée. Facture: $saleInvoiceNumber'),
-            backgroundColor: Colors.green,
+            content: Text(
+              result.isOffline
+                  ? 'Vente hors ligne (sync en attente). Facture: ${result.reference}'
+                  : 'Vente validée. Facture: $saleInvoiceNumber',
+            ),
+            backgroundColor: result.isOffline ? Colors.orange : Colors.green,
           ),
         );
         widget.onClose();
@@ -661,9 +655,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
                                     ),
                                   ),
                                   Text(
-                                    locator.tauxService.formatPrice(
-                                      item.unitPrice,
-                                    ),
+                                    locator.tauxService.formatPrice(item.unitPrice),
                                     style: GoogleFonts.poppins(
                                       fontSize: 11,
                                       color: Colors.grey[700],
@@ -679,9 +671,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
                                   context: context,
                                   builder: (context) => AlertDialog(
                                     title: const Text('Supprimer l\'article'),
-                                    content: Text(
-                                      'Voulez-vous supprimer "${item.article.libelle}" du panier?',
-                                    ),
+                                    content: Text('Voulez-vous supprimer "${item.article.libelle}" du panier?'),
                                     actions: [
                                       TextButton(
                                         onPressed: () => Navigator.pop(context),
@@ -689,19 +679,14 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
                                       ),
                                       TextButton(
                                         onPressed: () {
-                                          cartService.removeItem(
-                                            item.article.idArticle,
-                                          );
+                                          cartService.removeItem(item.article.idArticle);
                                           // Si le panier est vide, vider le champ montant payé
                                           if (cartService.isEmpty) {
                                             _paidAmountController.clear();
                                           }
                                           Navigator.pop(context);
                                         },
-                                        child: const Text(
-                                          'SUPPRIMER',
-                                          style: TextStyle(color: Colors.red),
-                                        ),
+                                        child: const Text('SUPPRIMER', style: TextStyle(color: Colors.red)),
                                       ),
                                     ],
                                   ),
@@ -723,9 +708,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
                                         item.quantity - 1,
                                       );
                                       // Mettre à jour le montant payé avec le nouveau total
-                                      _paidAmountController.text = cartService
-                                          .total
-                                          .toStringAsFixed(2);
+                                      _paidAmountController.text = cartService.total.toStringAsFixed(2);
                                     }
                                   : () => cartService.removeItem(
                                       item.article.idArticle,
@@ -755,8 +738,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
                                   item.quantity + 1,
                                 );
                                 // Mettre à jour le montant payé avec le nouveau total
-                                _paidAmountController.text = cartService.total
-                                    .toStringAsFixed(2);
+                                _paidAmountController.text = cartService.total.toStringAsFixed(2);
                               },
                               icon: const Icon(
                                 Icons.add_circle_outline,
@@ -778,9 +760,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
                           context: context,
                           builder: (context) => AlertDialog(
                             title: const Text('Vider le panier'),
-                            content: const Text(
-                              'Voulez-vous vraiment supprimer tous les articles du panier?',
-                            ),
+                            content: const Text('Voulez-vous vraiment supprimer tous les articles du panier?'),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(context),
@@ -793,24 +773,14 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
                                   Navigator.pop(context);
                                   Navigator.pop(context);
                                 },
-                                child: const Text(
-                                  'OUI, VIDER',
-                                  style: TextStyle(color: Colors.red),
-                                ),
+                                child: const Text('OUI, VIDER', style: TextStyle(color: Colors.red)),
                               ),
                             ],
                           ),
                         );
                       },
-                      icon: const Icon(
-                        Icons.delete_sweep,
-                        color: Colors.red,
-                        size: 18,
-                      ),
-                      label: const Text(
-                        'Tout vider',
-                        style: TextStyle(color: Colors.red),
-                      ),
+                      icon: const Icon(Icons.delete_sweep, color: Colors.red, size: 18),
+                      label: const Text('Tout vider', style: TextStyle(color: Colors.red)),
                     ),
                   const SizedBox(height: 12),
                   Text(
@@ -998,8 +968,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
                       setState(() {
                         if (isPartialPayment) {
                           _typeTransaction = _typeTransactionAcompte;
-                        } else if (_typeTransaction ==
-                            _typeTransactionAcompte) {
+                        } else if (_typeTransaction == _typeTransactionAcompte) {
                           _typeTransaction = _typeTransactionComplet;
                         }
                       });
@@ -1024,34 +993,12 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Montant payé:',
+                        'Rendu:',
                         style: GoogleFonts.poppins(color: Colors.grey[700]),
                       ),
                       Text(
-                        locator.tauxService.formatPrice(paidAmount),
+                        locator.tauxService.formatPrice(change < 0 ? 0 : change),
                         style: GoogleFonts.poppins(color: Colors.grey[700]),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Reste à payer:',
-                        style: GoogleFonts.poppins(
-                          color: change < 0 ? Colors.red[700] : Colors.grey[700],
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        locator.tauxService.formatPrice(
-                          change < 0 ? change.abs() : 0,
-                        ),
-                        style: GoogleFonts.poppins(
-                          color: change < 0 ? Colors.red[700] : Colors.grey[700],
-                          fontWeight: FontWeight.w600,
-                        ),
                       ),
                     ],
                   ),
@@ -1099,26 +1046,4 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
       },
     );
   }
-}
-
-// Fonction utilitaire pour afficher le bottomsheet de vente rapide
-Future<void> showFastSaleBottomSheet({
-  required BuildContext context,
-  required NumberFormat currencyFormat,
-  required String currencySymbol,
-  ArticleData? initialFocusedArticle,
-}) async {
-  await showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    isDismissible: false,
-    enableDrag: false,
-    backgroundColor: Colors.transparent,
-    builder: (context) => FastSaleBottomSheet(
-      currencyFormat: currencyFormat,
-      currencySymbol: currencySymbol,
-      initialFocusedArticle: initialFocusedArticle,
-      onClose: () => Navigator.pop(context),
-    ),
-  );
 }

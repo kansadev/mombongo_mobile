@@ -9,10 +9,12 @@ import '../models/stock.dart';
 import '../models/paiement.dart';
 import '../models/site.dart';
 import '../models/taux.dart';
+import '../models/article_data.dart';
 
 class DatabaseService {
   static const String _boxName = 'mombongo_db';
   static const String _authBoxName = 'auth_data';
+  static const String offlineVentesQueueKey = 'offline_ventes';
   
   late Box<dynamic> _mainBox;
   late Box<dynamic> _authBox;
@@ -225,6 +227,101 @@ class DatabaseService {
   List<Site> getSites() {
     return (_mainBox.get('sites') as List?)?.cast<Site>() ?? [];
   }
+
+  // --- Cache catalogue stock par site (ArticleData) ---
+
+  String _stockArticlesKey(int idSite) => 'stock_articles_site_$idSite';
+
+  Future<void> saveStockArticlesBySite(
+    int idSite,
+    List<ArticleData> articles,
+  ) async {
+    await _mainBox.put(_stockArticlesKey(idSite), articles);
+    await _mainBox.put(
+      '${_stockArticlesKey(idSite)}_last_sync',
+      DateTime.now().toIso8601String(),
+    );
+  }
+
+  List<ArticleData> getStockArticlesBySite(int idSite) {
+    try {
+      final data = _mainBox.get(_stockArticlesKey(idSite));
+      if (data is List) {
+        return data.whereType<ArticleData>().toList();
+      }
+      return [];
+    } catch (e) {
+      if (kDebugMode) {
+        print('Erreur lecture cache stock site $idSite: $e');
+      }
+      return [];
+    }
+  }
+
+  /// Fusionne les articles reçus (pagination) dans le cache du site.
+  Future<void> mergeStockArticlesBySite(
+    int idSite,
+    List<ArticleData> incoming,
+  ) async {
+    final existing = getStockArticlesBySite(idSite);
+    final byStockId = <int, ArticleData>{
+      for (final a in existing) a.idStock: a,
+    };
+    for (final a in incoming) {
+      byStockId[a.idStock] = a;
+    }
+    await saveStockArticlesBySite(idSite, byStockId.values.toList());
+  }
+
+  Future<void> decrementStockLocally({
+    required int idSite,
+    required int idStock,
+    required int quantity,
+  }) async {
+    final articles = getStockArticlesBySite(idSite);
+    if (articles.isEmpty) return;
+
+    final updated = articles.map((a) {
+      if (a.idStock != idStock) return a;
+      final newQty = (a.quantiteStock - quantity).clamp(0, a.quantiteStock);
+      return a.copyWith(quantiteStock: newQty);
+    }).toList();
+
+    await saveStockArticlesBySite(idSite, updated);
+  }
+
+  // --- File d'attente ventes offline ---
+
+  List<Map<String, dynamic>> getOfflineVentesQueue() {
+    try {
+      final raw = _mainBox.get(offlineVentesQueueKey);
+      if (raw is! List) return [];
+      return raw.map((item) {
+        if (item is Map<String, dynamic>) return item;
+        if (item is Map) {
+          return Map<String, dynamic>.from(item);
+        }
+        return <String, dynamic>{};
+      }).where((m) => m.isNotEmpty).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Erreur lecture queue offline_ventes: $e');
+      }
+      return [];
+    }
+  }
+
+  Future<void> saveOfflineVentesQueue(List<Map<String, dynamic>> queue) async {
+    await _mainBox.put(offlineVentesQueueKey, queue);
+  }
+
+  Future<void> enqueueOfflineVente(Map<String, dynamic> entry) async {
+    final queue = getOfflineVentesQueue();
+    queue.add(entry);
+    await saveOfflineVentesQueue(queue);
+  }
+
+  int get pendingOfflineVentesCount => getOfflineVentesQueue().length;
 
   Future<void> close() async {
     await _mainBox.close();
