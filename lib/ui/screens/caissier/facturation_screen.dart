@@ -3,11 +3,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/services/cart_service.dart';
 import 'package:mombongo/ui/screens/caissier/product_detail_screen.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'cart_screen.dart';
@@ -172,28 +172,14 @@ class _FacturationScreenState extends State<FacturationScreen>
     required String? search,
     required bool? withStock,
   }) async {
-    final apiResponse = await locator.apiService.getStockArticles(
-      idSite: siteId,
+    // Online → API + merge cache ; offline → catalogue Hive (produits + services).
+    return locator.cacheStrategy.getStockArticlesBySiteCached(
+      siteId,
       page: page,
       pageSize: pageSize,
-      sortOrder: 'asc',
       search: search,
       withStock: withStock,
     );
-
-    final List<ArticleData> fetched = [];
-    for (final item in apiResponse) {
-      try {
-        if (item is Map<String, dynamic>) {
-          fetched.add(ArticleData.fromJson(item));
-        } else if (item is Map) {
-          fetched.add(ArticleData.fromJson(item.cast<String, dynamic>()));
-        }
-      } catch (e) {
-        debugPrint('Error parsing article: $e');
-      }
-    }
-    return fetched;
   }
 
   Future<bool> _collectServiceDescriptionsBeforeConfirm(
@@ -291,43 +277,24 @@ class _FacturationScreenState extends State<FacturationScreen>
       } else {
         if (mounted) {
           setState(() {
+            articles = [];
+            filteredArticles = [];
             isLoading = false;
           });
-          _showErrorDialog('Utilisateur non connecté');
         }
       }
     } catch (e) {
       debugPrint('Error loading articles: $e');
-      if (mounted) {
-        setState(() {
-          isLoading = false;
-        });
-        _showErrorDialog('Erreur lors du chargement: $e');
-      }
+      if (!mounted) return;
+      // Pas de dialog hors ligne / erreur réseau sur la facturation :
+      // on affiche simplement une liste vide (le cache est géré en amont).
+      setState(() {
+        articles = [];
+        filteredArticles = [];
+        isLoading = false;
+        _hasMoreData = false;
+      });
     }
-  }
-
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Erreur'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _loadArticles();
-            },
-            child: const Text('Réessayer'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Fermer'),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _refreshAfterSale() async {
@@ -444,10 +411,8 @@ class _FacturationScreenState extends State<FacturationScreen>
       if (!mounted || requestId != _browseRequestId) return;
       setState(() {
         _isLoadingMore = false;
+        _hasMoreData = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur lors du chargement des articles: $e')),
-      );
     }
   }
 
@@ -509,10 +474,8 @@ class _FacturationScreenState extends State<FacturationScreen>
       if (!mounted || requestId != _searchRequestId) return;
       setState(() {
         _isLoadingMoreSearch = false;
+        _hasMoreSearchData = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur lors de la recherche: $e')),
-      );
     }
   }
 

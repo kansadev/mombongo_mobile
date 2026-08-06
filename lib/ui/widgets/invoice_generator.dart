@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/services/cart_service.dart';
@@ -9,6 +9,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pdf_lib;
 import 'package:printing/printing.dart';
 import 'dart:io' as io;
+import 'package:mombongo/utils/api_error_message.dart';
 
 class InvoiceGenerator {
   final BuildContext context;
@@ -62,7 +63,7 @@ class InvoiceGenerator {
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors de la génération de la facture: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
           ),
         );
@@ -780,7 +781,7 @@ class InvoiceGenerator {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors de l\'enregistrement: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
           ),
         );
@@ -809,7 +810,7 @@ class InvoiceGenerator {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors de l\'impression: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
           ),
         );

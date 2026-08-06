@@ -6,6 +6,7 @@ import 'package:mombongo/ui/screens/gestionnaire/devise_form_screen.dart';
 import 'package:mombongo/ui/screens/gestionnaire/taux_update_screen.dart';
 import 'package:mombongo/ui/widgets/devise_card.dart';
 import 'package:mombongo/ui/widgets/loading_widget.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class DeviseListScreen extends StatefulWidget {
   final int idSite;
@@ -54,7 +55,7 @@ class DeviseListScreenState extends State<DeviseListScreen> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur: $e'),
+          content: Text(apiErrorUserMessage(e)),
           backgroundColor: Colors.red,
         ),
       );

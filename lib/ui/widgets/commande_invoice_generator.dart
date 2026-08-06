@@ -1,13 +1,14 @@
 import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
 import 'package:mombongo/utils/invoice_receipt_helper.dart';
 import 'package:mombongo/utils/parse_utils.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pdf_lib;
 import 'package:printing/printing.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 enum CommandeInvoiceType { vente, retrait }
 
@@ -56,7 +57,7 @@ class CommandeInvoiceGenerator {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur lors de la génération: $e'),
+          content: Text(apiErrorUserMessage(e)),
           backgroundColor: Colors.red,
         ),
       );

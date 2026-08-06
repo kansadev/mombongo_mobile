@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:mombongo/ui/screens/caissier/caissier_screen.dart';
 import 'package:mombongo/ui/screens/caissier/sales_journal_screen.dart';
@@ -12,6 +13,10 @@ import 'ui/screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Évite les tentatives de téléchargement réseau des polices Google
+  // quand l'application fonctionne hors ligne.
+  GoogleFonts.config.allowRuntimeFetching = false;
   
   // Initialize services
   await locator.initialize();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../services/service_locator.dart';
 import '../../../models/site.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class NewUserScreen extends StatefulWidget {
   const NewUserScreen({super.key});
@@ -157,7 +158,7 @@ class _NewUserScreenState extends State<NewUserScreen> {
         Navigator.pop(context, true);
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorUserMessage(e)), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => isLoading = false);
     }

@@ -56,6 +56,9 @@ class AuthRepository {
         print('Token: ${token.substring(0, 20)}...');
       }
 
+      // Mémoriser le site natal admin si pas encore fait
+      _ensureNatalSiteRemembered(_currentUser!);
+
       // Validate session in background
       _validatePersistedSession();
     } else if (kDebugMode) {
@@ -133,6 +136,8 @@ class AuthRepository {
         _apiService.setTokens(token, refreshToken ?? '');
         _currentUser = user;
         _isAuthenticated = true;
+
+        await _ensureNatalSiteRemembered(user);
 
         if (kDebugMode) {
           print(
@@ -220,6 +225,58 @@ class AuthRepository {
     await _dbService.saveAuthToken(token);
     await _dbService.saveRefreshToken(refreshToken);
     await _dbService.saveCurrentUser(user);
+    await _ensureNatalSiteRemembered(user);
+  }
+
+  static const String _natalIdSiteKey = 'admin_natal_id_site';
+  static const String _natalNomSiteKey = 'admin_natal_nom_site';
+
+  Future<void> _ensureNatalSiteRemembered(Utilisateur user) async {
+    if (!user.isAdministrateur) return;
+    final existing = _dbService.get<String>(_natalIdSiteKey);
+    if (existing != null && existing.isNotEmpty) return;
+    if (user.idSite.isEmpty) return;
+    await _dbService.save(_natalIdSiteKey, user.idSite);
+    await _dbService.save(_natalNomSiteKey, user.nomSite);
+  }
+
+  String? get natalSiteId => _dbService.get<String>(_natalIdSiteKey);
+  String? get natalSiteName => _dbService.get<String>(_natalNomSiteKey);
+
+  /// Bascule locale du site opérationnel (admin) — pas de re-login API.
+  Future<Utilisateur> switchOperationalSite({
+    required String idSite,
+    required String nomSite,
+    String? adresseSite,
+    String? contact,
+  }) async {
+    if (_currentUser == null || !_isAuthenticated) {
+      throw Exception('Utilisateur non connecté');
+    }
+    if (!_currentUser!.isAdministrateur) {
+      final role = _currentUser!.role.toUpperCase();
+      if (!role.contains('ADMIN')) {
+        throw Exception('Seuls les administrateurs peuvent changer de site');
+      }
+    }
+
+    await _ensureNatalSiteRemembered(_currentUser!);
+
+    final updated = _currentUser!.copyWith(
+      idSite: idSite,
+      nomSite: nomSite,
+      adresseSite: adresseSite ?? _currentUser!.adresseSite,
+      contact: contact ?? _currentUser!.contact,
+    );
+
+    _currentUser = updated;
+    await _dbService.saveCurrentUser(updated);
+
+    if (kDebugMode) {
+      print('Site opérationnel basculé vers: $nomSite ($idSite)');
+    }
+
+    return updated;
   }
 
   Future<AuthResult> updateCurrentUserProfile({

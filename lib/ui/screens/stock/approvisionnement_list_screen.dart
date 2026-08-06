@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class ApprovisionnementListScreen extends StatefulWidget {
   const ApprovisionnementListScreen({super.key});
@@ -105,7 +106,7 @@ class _ApprovisionnementListScreenState
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = e.toString();
+          _errorMessage = apiErrorUserMessage(e);
         });
       }
     }

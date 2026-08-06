@@ -5,6 +5,7 @@ import '../screens/home_screen.dart';
 import '../screens/gestionnaire_screen.dart';
 import '../screens/admin/admin_screen.dart';
 import '../screens/profil_screen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -81,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Erreur de connexion: $e';
+          _errorMessage = apiErrorUserMessage(e);
         });
       }
     } finally {

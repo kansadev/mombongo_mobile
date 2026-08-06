@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class MiseAJourStockScreen extends StatefulWidget {
   const MiseAJourStockScreen({super.key});
@@ -124,7 +125,7 @@ class _MiseAJourStockScreenState extends State<MiseAJourStockScreen>
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = e.toString();
+          _errorMessage = apiErrorUserMessage(e);
         });
       }
     }

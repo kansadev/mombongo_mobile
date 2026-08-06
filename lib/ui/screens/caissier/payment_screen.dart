@@ -1,12 +1,12 @@
 // lib/screens/payment_screen.dart
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/services/cart_service.dart';
 import 'package:mombongo/models/client.dart';
 import 'package:mombongo/models/utilisateur.dart';
 import 'package:mombongo/ui/screens/caissier/create_client_screen.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
@@ -14,6 +14,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pdfLib;
 import 'package:printing/printing.dart';
 import 'dart:convert';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -418,7 +419,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors de la génération de la facture: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -1119,7 +1120,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors de l\'enregistrement: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -1170,7 +1171,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors de l\'impression: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -1460,7 +1461,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors du paiement: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
           ),
         );

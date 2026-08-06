@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
 import 'package:mombongo/utils/parse_utils.dart';
 
 class AnnulerVenteScreen extends StatefulWidget {

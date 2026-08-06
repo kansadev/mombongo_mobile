@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class ChargesSyntheseScreen extends StatefulWidget {
   const ChargesSyntheseScreen({super.key});
@@ -86,7 +87,7 @@ class _ChargesSyntheseScreenState extends State<ChargesSyntheseScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

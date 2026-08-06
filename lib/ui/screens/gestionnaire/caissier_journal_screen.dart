@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/profil_screen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class CaissierJournalScreen extends StatefulWidget {
   final int idUtilisateur;
@@ -106,7 +107,7 @@ class _CaissierJournalScreenState extends State<CaissierJournalScreen> {
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = 'Erreur lors du chargement des ventes: $e';
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

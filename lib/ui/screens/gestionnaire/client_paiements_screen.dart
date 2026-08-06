@@ -4,6 +4,7 @@ import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/caissier/commande_detail_screen.dart';
 import 'package:mombongo/utils/commande_invoice_helper.dart';
 import 'package:intl/intl.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class ClientPaiementsScreen extends StatefulWidget {
   final Map<String, dynamic> client;
@@ -113,7 +114,7 @@ class _ClientPaiementsScreenState extends State<ClientPaiementsScreen> {
       debugPrint('Stack trace: $stackTrace');
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

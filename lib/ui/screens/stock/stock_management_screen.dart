@@ -9,6 +9,7 @@ import 'package:mombongo/ui/screens/stock/approvisionnement_list_screen.dart';
 import 'package:mombongo/ui/screens/stock/product_list_screen.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/stock/PeremptionScreen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class GestionStocksScreen extends StatefulWidget {
   const GestionStocksScreen({super.key});
@@ -94,7 +95,7 @@ class _GestionStocksScreenState extends State<GestionStocksScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = 'Erreur lors du chargement: $e';
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

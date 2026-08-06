@@ -1,9 +1,10 @@
 // lib/ui/screens/caissier/create_client_screen.dart
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/models/client.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
 import 'package:intl/intl.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class CreateClientScreen extends StatefulWidget {
   const CreateClientScreen({super.key});
@@ -334,7 +335,7 @@ class _CreateClientScreenState extends State<CreateClientScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur lors de la création du client: $e'),
+          content: Text(apiErrorUserMessage(e)),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(

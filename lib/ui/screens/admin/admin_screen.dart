@@ -9,6 +9,8 @@ import '../gestionnaire/utilisateurs_screen.dart';
 import 'admin_dashboard_screen.dart';
 import '../login_screen.dart';
 import 'package:intl/intl.dart';
+import '../../widgets/site_switcher_panel.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -62,7 +64,7 @@ class _AdminScreenState extends State<AdminScreen> {
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }
@@ -88,32 +90,69 @@ class _AdminScreenState extends State<AdminScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = locator.authRepository.currentUser;
+    final isAdmin = currentUser?.isAdministrateur ?? false;
+    final siteName = (currentUser?.nomSite.isNotEmpty == true)
+        ? currentUser!.nomSite
+        : 'Aucun site';
+
     final resume = _dashboardData?['resume'] as Map<String, dynamic>?;
     final societe = _dashboardData?['societe'] as Map<String, dynamic>?;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(societe?['nomSociete']?.toString() ?? 'Dashboard Admin'),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              societe?['nomSociete']?.toString() ?? 'Dashboard Admin',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            if (isAdmin)
+              Text(
+                siteName,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+          ],
+        ),
         centerTitle: true,
         backgroundColor: const Color(0xFF2C3E50),
         elevation: 0,
-        
+        actions: isAdmin
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.swap_horiz),
+                  tooltip: 'Changer de site',
+                  onPressed: () => SiteSwitcherPanel.show(context),
+                ),
+              ]
+            : null,
       ),
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
             DrawerHeader(
-              decoration: const BoxDecoration(
-                color: Color(0xFF2C3E50),
-              ),
+              decoration: const BoxDecoration(color: Color(0xFF2C3E50)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const CircleAvatar(
                     radius: 30,
                     backgroundColor: Colors.white,
-                    child: Icon(Icons.admin_panel_settings, color: Color(0xFF2C3E50), size: 30),
+                    child: Icon(
+                      Icons.admin_panel_settings,
+                      color: Color(0xFF2C3E50),
+                      size: 30,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -127,10 +166,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   const SizedBox(height: 4),
                   const Text(
                     'Administrateur',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                 ],
               ),
@@ -143,7 +179,9 @@ class _AdminScreenState extends State<AdminScreen> {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const AdminDashboardScreen(),
+                  ),
                 );
               },
             ),
@@ -155,7 +193,9 @@ class _AdminScreenState extends State<AdminScreen> {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const PointsDeVenteScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const PointsDeVenteScreen(),
+                  ),
                 );
               },
             ),
@@ -167,11 +207,13 @@ class _AdminScreenState extends State<AdminScreen> {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const GestionStocksScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const GestionStocksScreen(),
+                  ),
                 );
               },
             ),
-           
+
             _buildDrawerItem(
               context: context,
               icon: Icons.people,
@@ -180,7 +222,9 @@ class _AdminScreenState extends State<AdminScreen> {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const CaissierPerformanceScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const CaissierPerformanceScreen(),
+                  ),
                 );
               },
             ),
@@ -192,7 +236,9 @@ class _AdminScreenState extends State<AdminScreen> {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const ClientsSiteScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const ClientsSiteScreen(),
+                  ),
                 );
               },
             ),
@@ -204,7 +250,9 @@ class _AdminScreenState extends State<AdminScreen> {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const UtilisateursScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const UtilisateursScreen(),
+                  ),
                 );
               },
             ),
@@ -242,234 +290,277 @@ class _AdminScreenState extends State<AdminScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _errorMessage != null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Erreur',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.red[700]),
-                        ),
-                        const SizedBox(height: 8),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 32),
-                          child: Text(
-                            _errorMessage!,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton(
-                          onPressed: _loadDashboardData,
-                          child: const Text('Réessayer'),
-                        ),
-                      ],
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Erreur',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red[700],
+                      ),
                     ),
-                  )
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Statistiques globales
-                        if (resume != null) ...[
-                          const Text(
-                            'Vue d\'ensemble',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF2C3E50),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: _loadDashboardData,
+                      child: const Text('Réessayer'),
+                    ),
+                  ],
+                ),
+              )
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Statistiques globales
+                    if (resume != null) ...[
+                      const Text(
+                        'Vue d\'ensemble',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2C3E50),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              title: 'Chiffre d\'affaires',
+                              value:
+                                  NumberFormat.currency(
+                                    symbol: 'CDF ',
+                                    decimalDigits: 0,
+                                  ).format(
+                                    _parseDouble(
+                                      resume['chiffreAffairesTotal'] ?? 0,
+                                    ),
+                                  ),
+                              icon: Icons.monetization_on,
+                              color: Colors.green,
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildStatCard(
-                                  title: 'Chiffre d\'affaires',
-                                  value: NumberFormat.currency(
-                                    symbol: 'CDF ',
-                                    decimalDigits: 0,
-                                  ).format(_parseDouble(resume['chiffreAffairesTotal'] ?? 0)),
-                                  icon: Icons.monetization_on,
-                                  color: Colors.green,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildStatCard(
-                                  title: 'Total ventes',
-                                  value: _parseInt(resume['nombreTotalVentes'] ?? 0).toString(),
-                                  icon: Icons.shopping_cart,
-                                  color: Colors.blue,
-                                ),
-                              ),
-                            ],
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildStatCard(
+                              title: 'Total ventes',
+                              value: _parseInt(
+                                resume['nombreTotalVentes'] ?? 0,
+                              ).toString(),
+                              icon: Icons.shopping_cart,
+                              color: Colors.blue,
+                            ),
                           ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildStatCard(
-                                  title: 'Paiements',
-                                  value: NumberFormat.currency(
-                                    symbol: 'CDF ',
-                                    decimalDigits: 0,
-                                  ).format(_parseDouble(resume['montantTotalPaiements'] ?? 0)),
-                                  icon: Icons.payment,
-                                  color: Colors.orange,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildStatCard(
-                                  title: 'Valeur stock',
-                                  value: NumberFormat.currency(
-                                    symbol: 'CDF ',
-                                    decimalDigits: 0,
-                                  ).format(_parseDouble(resume['valeurStockTotal'] ?? 0)),
-                                  icon: Icons.inventory,
-                                  color: Colors.purple,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildStatCard(
-                                  title: 'Sites actifs',
-                                  value: _parseInt(resume['sitesActifs'] ?? 0).toString(),
-                                  icon: Icons.store,
-                                  color: Colors.teal,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildStatCard(
-                                  title: 'Alertes stocks',
-                                  value: _parseInt(resume['alertesStocksTotal'] ?? 0).toString(),
-                                  icon: Icons.warning,
-                                  color: Colors.red,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 32),
                         ],
-
-                        // Actions rapides
-                        const Text(
-                          'Actions rapides',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2C3E50),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              title: 'Paiements',
+                              value:
+                                  NumberFormat.currency(
+                                    symbol: 'CDF ',
+                                    decimalDigits: 0,
+                                  ).format(
+                                    _parseDouble(
+                                      resume['montantTotalPaiements'] ?? 0,
+                                    ),
+                                  ),
+                              icon: Icons.payment,
+                              color: Colors.orange,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final crossAxisCount = 2;
-                            final spacing = 12.0;
-                            final actionCards = [
-                              _buildActionCard(
-                                title: 'Dashboard détaillé',
-                                icon: Icons.dashboard,
-                                color: const Color(0xFF3498DB),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
-                                  );
-                                },
-                              ),
-                              _buildActionCard(
-                                title: 'Points de Vente',
-                                icon: Icons.store,
-                                color: Colors.green,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (context) => const PointsDeVenteScreen()),
-                                  );
-                                },
-                              ),
-                              _buildActionCard(
-                                title: 'Gestion Stocks',
-                                icon: Icons.inventory,
-                                color: Colors.orange,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (context) => const GestionStocksScreen()),
-                                  );
-                                },
-                              ),
-                              _buildActionCard(
-                                title: 'Performances Caissiers',
-                                icon: Icons.people,
-                                color: Colors.teal,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (context) => const CaissierPerformanceScreen()),
-                                  );
-                                },
-                              ),
-                              _buildActionCard(
-                                title: 'Gestion Utilisateurs',
-                                icon: Icons.manage_accounts,
-                                color: Colors.indigo,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (context) => const UtilisateursScreen()),
-                                  );
-                                },
-                              ),
-                            ];
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildStatCard(
+                              title: 'Valeur stock',
+                              value:
+                                  NumberFormat.currency(
+                                    symbol: 'CDF ',
+                                    decimalDigits: 0,
+                                  ).format(
+                                    _parseDouble(
+                                      resume['valeurStockTotal'] ?? 0,
+                                    ),
+                                  ),
+                              icon: Icons.inventory,
+                              color: Colors.purple,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              title: 'Sites actifs',
+                              value: _parseInt(
+                                resume['sitesActifs'] ?? 0,
+                              ).toString(),
+                              icon: Icons.store,
+                              color: Colors.teal,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildStatCard(
+                              title: 'Alertes stocks',
+                              value: _parseInt(
+                                resume['alertesStocksTotal'] ?? 0,
+                              ).toString(),
+                              icon: Icons.warning,
+                              color: Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                    ],
 
-                            final isOdd = actionCards.length % crossAxisCount != 0;
-                            final lastIndex = actionCards.length - 1;
+                    // Actions rapides
+                    const Text(
+                      'Actions rapides',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2C3E50),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final crossAxisCount = 2;
+                        final spacing = 12.0;
+                        final actionCards = [
+                          _buildActionCard(
+                            title: 'Dashboard détaillé',
+                            icon: Icons.dashboard,
+                            color: const Color(0xFF3498DB),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const AdminDashboardScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionCard(
+                            title: 'Points de Vente',
+                            icon: Icons.store,
+                            color: Colors.green,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const PointsDeVenteScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionCard(
+                            title: 'Gestion Stocks',
+                            icon: Icons.inventory,
+                            color: Colors.orange,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const GestionStocksScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionCard(
+                            title: 'Performances Caissiers',
+                            icon: Icons.people,
+                            color: Colors.teal,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const CaissierPerformanceScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionCard(
+                            title: 'Gestion Utilisateurs',
+                            icon: Icons.manage_accounts,
+                            color: Colors.indigo,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const UtilisateursScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ];
 
-                            return Column(
-                              children: [
-                                // Grille normale pour toutes les cartes sauf la dernière si impaire
-                                GridView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        final isOdd = actionCards.length % crossAxisCount != 0;
+                        final lastIndex = actionCards.length - 1;
+
+                        return Column(
+                          children: [
+                            // Grille normale pour toutes les cartes sauf la dernière si impaire
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
                                     crossAxisCount: crossAxisCount,
                                     crossAxisSpacing: spacing,
                                     mainAxisSpacing: spacing,
                                     childAspectRatio: 2.0,
                                   ),
-                                  itemCount: isOdd ? actionCards.length - 1 : actionCards.length,
-                                  itemBuilder: (context, index) {
-                                    return actionCards[index];
-                                  },
-                                ),
-                                // Dernière carte en pleine largeur si impaire
-                                if (isOdd) ...[
-                                  SizedBox(height: spacing),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    height: 80,
-                                    child: actionCards[lastIndex],
-                                  ),
-                                ],
-                              ],
-                            );
-                          },
-                        ),
-                      ],
+                              itemCount: isOdd
+                                  ? actionCards.length - 1
+                                  : actionCards.length,
+                              itemBuilder: (context, index) {
+                                return actionCards[index];
+                              },
+                            ),
+                            // Dernière carte en pleine largeur si impaire
+                            if (isOdd) ...[
+                              SizedBox(height: spacing),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 80,
+                                child: actionCards[lastIndex],
+                              ),
+                            ],
+                          ],
+                        );
+                      },
                     ),
-                  ),
+                  ],
+                ),
+              ),
       ),
     );
   }
@@ -492,10 +583,7 @@ class _AdminScreenState extends State<AdminScreen> {
             offset: const Offset(0, 3),
           ),
         ],
-        border: Border.all(
-          color: Colors.grey.shade200,
-          width: 1,
-        ),
+        border: Border.all(color: Colors.grey.shade200, width: 1),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -528,10 +616,7 @@ class _AdminScreenState extends State<AdminScreen> {
           const SizedBox(height: 4),
           Text(
             title,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade600,
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -559,10 +644,7 @@ class _AdminScreenState extends State<AdminScreen> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                color,
-                color.withOpacity(0.7),
-              ],
+              colors: [color, color.withOpacity(0.7)],
             ),
           ),
           child: Column(

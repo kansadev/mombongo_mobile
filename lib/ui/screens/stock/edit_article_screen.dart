@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/models/article_update_request.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class EditArticleScreen extends StatefulWidget {
   /// Objet article complet passé depuis la liste des produits
@@ -748,12 +749,12 @@ class _EditArticleScreenState extends State<EditArticleScreen> {
 
       setState(() {
         _isLoading = false;
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur: $e'),
+          content: Text(apiErrorUserMessage(e)),
           backgroundColor: Colors.red,
         ),
       );

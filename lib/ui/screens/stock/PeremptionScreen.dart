@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:intl/intl.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class PeremptionScreen extends StatefulWidget {
   const PeremptionScreen({super.key});
@@ -57,7 +58,7 @@ class _PeremptionScreenState extends State<PeremptionScreen> {
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = 'Erreur lors du chargement: $e';
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

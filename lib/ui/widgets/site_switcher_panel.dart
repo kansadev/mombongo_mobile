@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mombongo/models/site.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 /// Dialogue / carte pour basculer le site opérationnel (admin).
 class SiteSwitcherPanel extends StatefulWidget {
@@ -133,7 +134,7 @@ class _SiteSwitcherPanelState extends State<SiteSwitcherPanel> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur: $e'),
+          content: Text(apiErrorUserMessage(e)),
           backgroundColor: Colors.red,
         ),
       );

@@ -71,7 +71,7 @@ class _CommandeDetailScreenState extends State<CommandeDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

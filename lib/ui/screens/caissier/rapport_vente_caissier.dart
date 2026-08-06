@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class VentesPage extends StatefulWidget {
   const VentesPage({super.key});
@@ -89,7 +90,7 @@ class _VentesPageState extends State<VentesPage> {
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = 'Erreur lors du chargement: $e';
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

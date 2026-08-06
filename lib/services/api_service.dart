@@ -18,7 +18,7 @@ class ApiService {
 
   // Environment selection: 0 = Test, 1 = Dev, 2 = Prod
   static const int environment =
-      2; // Modifier cette valeur pour changer d'environnement
+      0; // Modifier cette valeur pour changer d'environnement
 
   // Getter pour obtenir l'URL de base selon l'environnement
   String get baseUrl {
@@ -41,8 +41,9 @@ class ApiService {
   String? get refreshToken => _refreshToken;
 
   Future<bool> checkConnectivity() async {
-    var connectivityResult = await Connectivity().checkConnectivity();
-    return connectivityResult != ConnectivityResult.none;
+    final results = await Connectivity().checkConnectivity();
+    if (results.isEmpty) return false;
+    return results.any((r) => r != ConnectivityResult.none);
   }
 
   void setTokens(String token, String refreshToken) {
@@ -78,6 +79,11 @@ class ApiService {
     Future<http.Response> Function() request,
   ) async {
     try {
+      final online = await checkConnectivity();
+      if (!online) {
+        throw ApiException(kOfflineUserMessage, 0);
+      }
+
       final response = await request();
 
       if (kDebugMode) {
@@ -162,18 +168,13 @@ class ApiService {
       debugPrint('URI: ${(e is http.ClientException) ? e.uri : "Unknown"}');
       debugPrint('========================');
 
-      // More specific error messages based on error type
-      String errorMessage = 'Erreur de connexion';
-      if (e.toString().contains('Failed host lookup') ||
-          e.toString().contains('No address associated with hostname')) {
-        errorMessage =
-            'Serveur introuvable. Verifiez l\'URL ou votre connexion internet.';
-      } else if (e.toString().contains('SocketException') ||
-          e.toString().contains('Connection refused')) {
-        errorMessage =
-            'Connexion au serveur refusee. Le serveur est peut-etre hors ligne.';
-      } else if (e.toString().contains('Timeout')) {
-        errorMessage = 'Delai de connexion depasse. Reessayez plus tard.';
+      // Messages réseau orientés utilisateur (jamais « erreur serveur »).
+      final err = e.toString();
+      String errorMessage = kOfflineUserMessage;
+      if (err.contains('Timeout') ||
+          err.contains('timed out') ||
+          err.contains('TimeoutException')) {
+        errorMessage = kTimeoutUserMessage;
       }
 
       throw ApiException(errorMessage, 0);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class DettesStatistiquesScreen extends StatefulWidget {
   const DettesStatistiquesScreen({super.key});
@@ -59,7 +60,7 @@ class _DettesStatistiquesScreenState extends State<DettesStatistiquesScreen> {
       debugPrint('Stack trace: $stackTrace');
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

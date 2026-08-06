@@ -114,6 +114,60 @@ class Utilisateur extends HiveObject {
 
   Map<String, dynamic> toJson() => _$UtilisateurToJson(this);
 
+  Utilisateur copyWith({
+    String? idUtilisateur,
+    String? nomComplet,
+    String? sexe,
+    DateTime? dateNonce,
+    String? numeroTelephone,
+    String? photo,
+    String? login,
+    String? role,
+    String? idSite,
+    String? nomSite,
+    String? contact,
+    String? adresseSite,
+    String? idSociete,
+    String? nomSociete,
+    bool? statut,
+    bool? isConnected,
+    String? codeDevise,
+    String? nomDevise,
+    String? symboleDevise,
+    String? tauxActuel,
+  }) {
+    return Utilisateur(
+      idUtilisateur: idUtilisateur ?? this.idUtilisateur,
+      nomComplet: nomComplet ?? this.nomComplet,
+      sexe: sexe ?? this.sexe,
+      dateNonce: dateNonce ?? this.dateNonce,
+      numeroTelephone: numeroTelephone ?? this.numeroTelephone,
+      photo: photo ?? this.photo,
+      login: login ?? this.login,
+      role: role ?? this.role,
+      idSite: idSite ?? this.idSite,
+      nomSite: nomSite ?? this.nomSite,
+      contact: contact ?? this.contact,
+      adresseSite: adresseSite ?? this.adresseSite,
+      idSociete: idSociete ?? this.idSociete,
+      nomSociete: nomSociete ?? this.nomSociete,
+      statut: statut ?? this.statut,
+      isConnected: isConnected ?? this.isConnected,
+      codeDevise: codeDevise ?? this.codeDevise,
+      nomDevise: nomDevise ?? this.nomDevise,
+      symboleDevise: symboleDevise ?? this.symboleDevise,
+      tauxActuel: tauxActuel ?? this.tauxActuel,
+    );
+  }
+
+  bool get isAdministrateur {
+    final r = role.toUpperCase().trim();
+    return r == 'ADMINISTRATEUR' ||
+        r == 'ADMINISTRATOR' ||
+        r == 'ADMIN' ||
+        r.contains('ADMIN');
+  }
+
   // Helper methods for DateTime handling
   static DateTime _dateTimeFromJson(dynamic value) {
     if (value == null) return DateTime.now();

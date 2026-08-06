@@ -283,7 +283,7 @@ class DatabaseService {
 
     final updated = articles.map((a) {
       if (a.idStock != idStock) return a;
-      final newQty = (a.quantiteStock - quantity).clamp(0, a.quantiteStock);
+      final newQty = (a.quantiteStock - quantity).clamp(0, a.quantiteStock).toInt();
       return a.copyWith(quantiteStock: newQty);
     }).toList();
 

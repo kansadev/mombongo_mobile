@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:mombongo/models/client.dart';
 import 'package:mombongo/services/cart_service.dart';
@@ -10,19 +9,27 @@ import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/caissier/create_client_screen.dart';
 import 'package:mombongo/models/article_data.dart';
 import 'package:mombongo/ui/widgets/invoice_generator.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
 import 'package:provider/provider.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class FastSaleBottomSheet extends StatefulWidget {
   final NumberFormat currencyFormat;
   final String currencySymbol;
   final ArticleData? initialFocusedArticle;
   final VoidCallback onClose;
+  final VoidCallback? onSaleCompleted;
+  final Future<bool> Function(BuildContext context, CartService cartService)?
+      beforeConfirmSale;
 
-  const FastSaleBottomSheet({super.key, 
+  const FastSaleBottomSheet({
+    super.key,
     required this.currencyFormat,
     required this.currencySymbol,
     required this.initialFocusedArticle,
     required this.onClose,
+    this.onSaleCompleted,
+    this.beforeConfirmSale,
   });
 
   @override
@@ -324,6 +331,14 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
       return;
     }
 
+    if (widget.beforeConfirmSale != null) {
+      final descriptionsOk = await widget.beforeConfirmSale!(
+        context,
+        cartService,
+      );
+      if (!descriptionsOk || !mounted) return;
+    }
+
     if (isPartialPayment) {
       // allow a deposit; user will pay the remainder later
       ScaffoldMessenger.of(context).showSnackBar(
@@ -432,6 +447,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
       cartService.clearAfterPayment();
 
       if (mounted) {
+        widget.onSaleCompleted?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -449,7 +465,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors du paiement: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
           ),
         );

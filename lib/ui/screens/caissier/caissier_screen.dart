@@ -1,6 +1,6 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/caissier/profil.dart';
 import 'package:mombongo/ui/screens/caissier/facturation_screen.dart';
@@ -10,6 +10,7 @@ import 'package:mombongo/ui/screens/caissier/rapport_vente_caissier.dart';
 import 'package:mombongo/ui/screens/caissier/paiements_screen.dart';
 import 'package:mombongo/ui/screens/caissier/dettes_screen.dart';
 import 'package:mombongo/ui/widgets/offline_status_banner.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
 
 /// Shell caissier : 4 onglets (Accueil, Vente, Plus, Profil).
 /// Le panier reste dans [FacturationScreen].
@@ -45,13 +46,16 @@ class _CaissierScreenState extends State<CaissierScreen> {
       if (idSite <= 0) return;
       await locator.cacheStrategy.preloadStockArticlesForSite(idSite);
     } catch (e) {
-      debugPrint('Préchargement catalogue: $e');
+      if (kDebugMode) {
+        debugPrint('Préchargement catalogue: $e');
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       body: Column(
@@ -62,45 +66,66 @@ class _CaissierScreenState extends State<CaissierScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: Material(
-              elevation: 10,
-              color: colorScheme.surface,
-              child: NavigationBar(
-                selectedIndex: _currentIndex,
-                onDestinationSelected: (i) =>
-                    setState(() => _currentIndex = i),
-                backgroundColor: Colors.transparent,
-                indicatorColor: colorScheme.secondary.withOpacity(0.2),
-                labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.home_outlined),
-                    selectedIcon: Icon(Icons.home_rounded),
-                    label: 'Accueil',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.point_of_sale_outlined),
-                    selectedIcon: Icon(Icons.point_of_sale),
-                    label: 'Vente',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.grid_view_outlined),
-                    selectedIcon: Icon(Icons.grid_view_rounded),
-                    label: 'Plus',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.person_outline),
-                    selectedIcon: Icon(Icons.person),
-                    label: 'Profil',
-                  ),
-                ],
+      bottomNavigationBar: Material(
+        color: isDark ? const Color(0xFF1A1F2E) : Colors.white,
+        elevation: 8,
+        shadowColor: Colors.black.withOpacity(isDark ? 0.45 : 0.12),
+        child: SafeArea(
+          top: false,
+          child: NavigationBar(
+            height: 64,
+            selectedIndex: _currentIndex,
+            onDestinationSelected: (i) => setState(() => _currentIndex = i),
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            indicatorColor: colorScheme.primary.withOpacity(isDark ? 0.28 : 0.16),
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            destinations: [
+              NavigationDestination(
+                icon: Icon(
+                  Icons.home_outlined,
+                  color: colorScheme.onSurface.withOpacity(0.55),
+                ),
+                selectedIcon: Icon(
+                  Icons.home_rounded,
+                  color: colorScheme.primary,
+                ),
+                label: 'Accueil',
               ),
-            ),
+              NavigationDestination(
+                icon: Icon(
+                  Icons.point_of_sale_outlined,
+                  color: colorScheme.onSurface.withOpacity(0.55),
+                ),
+                selectedIcon: Icon(
+                  Icons.point_of_sale,
+                  color: colorScheme.primary,
+                ),
+                label: 'Vente',
+              ),
+              NavigationDestination(
+                icon: Icon(
+                  Icons.grid_view_outlined,
+                  color: colorScheme.onSurface.withOpacity(0.55),
+                ),
+                selectedIcon: Icon(
+                  Icons.grid_view_rounded,
+                  color: colorScheme.primary,
+                ),
+                label: 'Plus',
+              ),
+              NavigationDestination(
+                icon: Icon(
+                  Icons.person_outline,
+                  color: colorScheme.onSurface.withOpacity(0.55),
+                ),
+                selectedIcon: Icon(
+                  Icons.person,
+                  color: colorScheme.primary,
+                ),
+                label: 'Profil',
+              ),
+            ],
           ),
         ),
       ),
@@ -274,55 +299,51 @@ class _CaissierHomeTabState extends State<_CaissierHomeTab> {
 
     return Scaffold(
       backgroundColor: isDark
-          ? const Color(0xFF0F172A)
-          : const Color(0xFFF5F7FA),
+          ? const Color(0xFF0F1419)
+          : const Color(0xFFF4F6FA),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           onRefresh: _loadDashboard,
-          color: isDark ? Colors.white : colorScheme.secondary,
+          color: colorScheme.primary,
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              // En-tête avec salutation et date
+              // En-tête avec salutation
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _greeting,
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: isDark ? Colors.white60 : Colors.grey[600],
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _firstName,
-                            style: GoogleFonts.poppins(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w700,
-                              color: isDark
-                                  ? Colors.white
-                                  : const Color(0xFF1A1A2E),
-                              height: 1.1,
-                            ),
-                          ),
-                        ],
+                      Text(
+                        _greeting,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: isDark
+                              ? Colors.white.withOpacity(0.72)
+                              : const Color(0xFF5B6472),
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                     
+                      const SizedBox(height: 2),
+                      Text(
+                        _firstName,
+                        style: GoogleFonts.poppins(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF111827),
+                          height: 1.1,
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
 
-              // Carte de solde - Style Dashen
+              // Carte de solde
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -341,13 +362,10 @@ class _CaissierHomeTabState extends State<_CaissierHomeTab> {
                 ),
               ),
 
-              // Actions rapides - Style Dashen
+              // Actions rapides
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -358,17 +376,17 @@ class _CaissierHomeTabState extends State<_CaissierHomeTab> {
                           fontWeight: FontWeight.w600,
                           color: isDark
                               ? Colors.white
-                              : const Color(0xFF1A1A2E),
+                              : const Color(0xFF111827),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
                       Row(
                         children: [
                           Expanded(
                             child: _QuickActionDashen(
                               icon: Icons.history_edu_rounded,
                               label: 'Journal',
-                              color: const Color(0xFF6C5CE7),
+                              color: const Color(0xFF3B82F6),
                               onTap: () => _open(context, SalesJournalScreen()),
                             ),
                           ),
@@ -377,7 +395,7 @@ class _CaissierHomeTabState extends State<_CaissierHomeTab> {
                             child: _QuickActionDashen(
                               icon: Icons.payment_rounded,
                               label: 'Paiements',
-                              color: const Color(0xFF00B894),
+                              color: const Color(0xFF10B981),
                               onTap: () =>
                                   _open(context, const PaiementsScreen()),
                             ),
@@ -391,7 +409,7 @@ class _CaissierHomeTabState extends State<_CaissierHomeTab> {
                             child: _QuickActionDashen(
                               icon: Icons.account_balance_wallet_rounded,
                               label: 'Dettes',
-                              color: const Color(0xFFB42318),
+                              color: const Color(0xFFEF4444),
                               onTap: () => _open(context, const DettesScreen()),
                             ),
                           ),
@@ -421,15 +439,13 @@ class _CaissierHomeTabState extends State<_CaissierHomeTab> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.white,
+        color: isDark ? const Color(0xFF1A1F2E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withOpacity(0.08)
+              : const Color(0xFFE8ECF2),
+        ),
       ),
       child: const Center(child: CircularProgressIndicator()),
     );
@@ -576,22 +592,31 @@ class _QuickActionDashen extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withOpacity(0.06) : Colors.white,
+            color: isDark ? const Color(0xFF1A1F2E) : Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isDark
                   ? Colors.white.withOpacity(0.08)
-                  : Colors.grey.shade100,
+                  : const Color(0xFFE8ECF2),
             ),
+            boxShadow: isDark
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
           ),
           child: Column(
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
+                  color: color.withOpacity(isDark ? 0.22 : 0.14),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(icon, color: color, size: 24),
@@ -601,8 +626,8 @@ class _QuickActionDashen extends StatelessWidget {
                 label,
                 style: GoogleFonts.poppins(
                   fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.white70 : Colors.grey[700],
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
                 ),
               ),
             ],
@@ -620,35 +645,58 @@ class _QuickActionDashen extends StatelessWidget {
 class _CaissierPlusTab extends StatelessWidget {
   const _CaissierPlusTab();
 
+  static const _accentColors = <Color>[
+    Color(0xFF3B82F6),
+    Color(0xFF10B981),
+    Color(0xFFF59E0B),
+    Color(0xFFF97316),
+    Color(0xFF8B5CF6),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final items = <_PlusItem>[
       _PlusItem(
         Icons.history_edu_rounded,
         'Journal des ventes',
+        'Historique des ventes du jour',
         () => SalesJournalScreen(),
       ),
       _PlusItem(
         Icons.payment_rounded,
         'Paiements',
+        'Suivi des encaissements',
         () => const PaiementsScreen(),
       ),
       _PlusItem(
         Icons.account_balance_wallet_rounded,
         'Dettes & acomptes',
+        'Crédits et acomptes clients',
         () => const DettesScreen(),
       ),
-      _PlusItem(Icons.inventory_2_rounded, 'Stock', () => const StockPage()),
-      _PlusItem(Icons.assessment_rounded, 'Rapports', () => const VentesPage()),
+      _PlusItem(
+        Icons.inventory_2_rounded,
+        'Stock',
+        'Disponibilité des articles',
+        () => const StockPage(),
+      ),
+      _PlusItem(
+        Icons.assessment_rounded,
+        'Rapports',
+        'Synthèse de performance',
+        () => const VentesPage(),
+      ),
     ];
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: isDark ? const Color(0xFF0F1419) : const Color(0xFFF4F6FA),
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
           children: [
             Text(
               'Plus',
@@ -658,36 +706,92 @@ class _CaissierPlusTab extends StatelessWidget {
                 color: colorScheme.onSurface,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               'Accès rapide aux modules',
               style: GoogleFonts.poppins(
                 fontSize: 14,
-                color: colorScheme.onSurface.withOpacity(0.55),
+                fontWeight: FontWeight.w500,
+                color: colorScheme.onSurface.withOpacity(isDark ? 0.72 : 0.62),
               ),
             ),
             const SizedBox(height: 24),
-            ...items.map((item) {
+            ...items.asMap().entries.map((entry) {
+              final index = entry.key;
+              final item = entry.value;
+              final accent = _accentColors[index % _accentColors.length];
+
               return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.only(bottom: 12),
                 child: Material(
-                  color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(14),
-                  child: ListTile(
+                  color: isDark ? const Color(0xFF1A1F2E) : Colors.white,
+                  elevation: isDark ? 0 : 1.5,
+                  shadowColor: Colors.black.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  child: InkWell(
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => item.builder()),
                       );
                     },
-                    leading: Icon(item.icon, color: colorScheme.secondary),
-                    title: Text(
-                      item.label,
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withOpacity(0.08)
+                              : const Color(0xFFE8ECF2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: accent.withOpacity(isDark ? 0.22 : 0.14),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Icon(item.icon, color: accent, size: 24),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.label,
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15,
+                                    color: colorScheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  item.subtitle,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w400,
+                                    color: colorScheme.onSurface
+                                        .withOpacity(isDark ? 0.65 : 0.55),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: colorScheme.onSurface.withOpacity(0.45),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -703,7 +807,8 @@ class _CaissierPlusTab extends StatelessWidget {
 class _PlusItem {
   final IconData icon;
   final String label;
+  final String subtitle;
   final Widget Function() builder;
 
-  _PlusItem(this.icon, this.label, this.builder);
+  _PlusItem(this.icon, this.label, this.subtitle, this.builder);
 }

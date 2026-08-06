@@ -65,6 +65,42 @@ class ArticleData {
     required this.withStock,
   });
 
+  ArticleData copyWith({
+    int? idStock,
+    int? idArticle,
+    String? libelle,
+    int? quantiteStock,
+    double? prixAchat,
+    double? prixVentHT,
+    double? prixVentTTC,
+    int? seuilAlerte,
+    double? tva,
+    String? codeBarreQR,
+    double? remise,
+    int? idSite,
+    String? nomSite,
+    int? idSociete,
+    bool? withStock,
+  }) {
+    return ArticleData(
+      idStock: idStock ?? this.idStock,
+      idArticle: idArticle ?? this.idArticle,
+      libelle: libelle ?? this.libelle,
+      quantiteStock: quantiteStock ?? this.quantiteStock,
+      prixAchat: prixAchat ?? this.prixAchat,
+      prixVentHT: prixVentHT ?? this.prixVentHT,
+      prixVentTTC: prixVentTTC ?? this.prixVentTTC,
+      seuilAlerte: seuilAlerte ?? this.seuilAlerte,
+      tva: tva ?? this.tva,
+      codeBarreQR: codeBarreQR ?? this.codeBarreQR,
+      remise: remise ?? this.remise,
+      idSite: idSite ?? this.idSite,
+      nomSite: nomSite ?? this.nomSite,
+      idSociete: idSociete ?? this.idSociete,
+      withStock: withStock ?? this.withStock,
+    );
+  }
+
   factory ArticleData.fromJson(Map<String, dynamic> json) {
     return ArticleData(
       idStock: _parseInt(json['idStock'], 0),

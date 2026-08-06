@@ -4,6 +4,7 @@ import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/models/article_update_request.dart';
 import 'package:mombongo/ui/screens/stock/update_stock_screen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class UpdateArticleScreen extends StatefulWidget {
   const UpdateArticleScreen({super.key});
@@ -112,12 +113,12 @@ class _UpdateArticleScreenState extends State<UpdateArticleScreen> {
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(apiErrorUserMessage(e)), backgroundColor: Colors.red),
       );
     }
   }

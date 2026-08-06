@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/stock/edit_article_screen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 // import 'package:mombongo/ui/screens/stock/update_article_screen.dart';
 
 class ProductListScreen extends StatefulWidget {
@@ -62,7 +63,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = 'Erreur lors du chargement: $e';
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }
@@ -700,7 +701,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(apiErrorUserMessage(e)), backgroundColor: Colors.red),
       );
     }
   }

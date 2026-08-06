@@ -1,10 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/ui/screens/finance/rapports_financiers_screen.dart';
 import 'package:mombongo/ui/screens/stock/stock_management_screen.dart';
 import 'package:mombongo/ui/screens/vente/sale_report_screen.dart';
 import 'package:mombongo/ui/screens/caissier/sales_journal_screen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 import '../../services/service_locator.dart';
 import 'profil_screen.dart';
 import 'gestionnaire/caissier_performance_screen.dart';
@@ -100,27 +100,9 @@ class _GestionnaireScreenState extends State<GestionnaireScreen> {
       debugPrint('Erreur lors du chargement du dashboard: $e');
       if (!mounted) return;
 
-      // Analyser le type d'erreur pour afficher un message approprie
-      String message;
-      if (e.toString().contains('500')) {
-        message =
-            'Nous rencontrons un probleme technique. Veuillez reessayer plus tard.';
-      } else if (e.toString().contains('502') || e.toString().contains('503')) {
-        message =
-            'Service temporairement indisponible. Veuillez reessayer plus tard.';
-      } else if (e.toString().contains('Connection')) {
-        message = 'Probleme de connexion. Verifiez votre connexion internet.';
-      } else if (e.toString().contains('timeout')) {
-        message = 'Delai de connexion depasse. Veuillez reessayer.';
-      } else {
-        // En release, on n'affiche pas les details de l'erreur serveur
-        message = kReleaseMode
-            ? 'Une erreur est survenue lors du chargement'
-            : 'Erreur lors du chargement: $e';
-      }
-
+      // Message utilisateur unifié (offline / réseau / prod).
       setState(() {
-        _errorMessage = message;
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

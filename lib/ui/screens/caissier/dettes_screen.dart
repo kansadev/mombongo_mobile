@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:intl/intl.dart';
 import 'package:mombongo/ui/screens/caissier/dettes_statistiques_screen.dart';
 import 'package:mombongo/ui/screens/caissier/dette_detail_screen.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class DettesScreen extends StatefulWidget {
   const DettesScreen({super.key});
@@ -169,7 +170,7 @@ class _DettesScreenState extends State<DettesScreen> {
       debugPrint('Stack trace: $stackTrace');
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

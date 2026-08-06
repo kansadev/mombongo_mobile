@@ -143,11 +143,7 @@ class CacheStrategy {
         search: search,
         withStock: withStock,
       );
-      if (cached.isEmpty) {
-        throw Exception(
-          'Pas de connexion et aucun catalogue en cache pour ce site',
-        );
-      }
+      // Hors ligne : catalogue local (vide = liste vide, pas d'exception).
       return _paginate(cached, page, pageSize);
     }
 
@@ -195,7 +191,8 @@ class CacheStrategy {
     }
   }
 
-  /// Précharge le catalogue du site pour usage offline.
+  /// Précharge le catalogue du site pour usage offline
+  /// (produits avec stock + services / sans stock).
   Future<int> preloadStockArticlesForSite(
     int idSite, {
     int pageSize = 200,
@@ -205,6 +202,50 @@ class CacheStrategy {
       return _dbService.getStockArticlesBySite(idSite).length;
     }
 
+    try {
+      final withStock = await _fetchAllStockArticlesPages(
+        idSite: idSite,
+        pageSize: pageSize,
+        withStock: true,
+      );
+      final withoutStock = await _fetchAllStockArticlesPages(
+        idSite: idSite,
+        pageSize: pageSize,
+        withStock: false,
+      );
+
+      final byStockId = <int, ArticleData>{};
+      for (final article in [...withStock, ...withoutStock]) {
+        byStockId[article.idStock] = article;
+      }
+      final all = byStockId.values.toList();
+
+      if (all.isNotEmpty) {
+        await _dbService.saveStockArticlesBySite(idSite, all);
+      }
+
+      if (kDebugMode) {
+        print(
+          'Préchargement catalogue site $idSite: '
+          '${withStock.length} avec stock, '
+          '${withoutStock.length} sans stock '
+          '(${all.length} total)',
+        );
+      }
+      return all.length;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Préchargement catalogue site $idSite échoué: $e');
+      }
+      return _dbService.getStockArticlesBySite(idSite).length;
+    }
+  }
+
+  Future<List<ArticleData>> _fetchAllStockArticlesPages({
+    required int idSite,
+    required int pageSize,
+    required bool? withStock,
+  }) async {
     final all = <ArticleData>[];
     var page = 1;
     const maxPages = 25;
@@ -215,7 +256,7 @@ class CacheStrategy {
         page: page,
         pageSize: pageSize,
         sortOrder: 'asc',
-        withStock: true,
+        withStock: withStock,
       );
 
       if (batch.isEmpty) break;
@@ -234,14 +275,7 @@ class CacheStrategy {
       page++;
     }
 
-    if (all.isNotEmpty) {
-      await _dbService.saveStockArticlesBySite(idSite, all);
-    }
-
-    if (kDebugMode) {
-      print('Préchargement catalogue site $idSite: ${all.length} articles');
-    }
-    return all.length;
+    return all;
   }
 
   List<ArticleData> _filterCachedStockArticles({
@@ -251,7 +285,9 @@ class CacheStrategy {
   }) {
     var list = _dbService.getStockArticlesBySite(idSite);
     if (withStock == true) {
-      list = list.where((a) => a.quantiteStock > 0).toList();
+      list = list.where((a) => a.withStock).toList();
+    } else if (withStock == false) {
+      list = list.where((a) => !a.withStock).toList();
     }
     if (search != null && search.trim().isNotEmpty) {
       final q = search.trim().toLowerCase();

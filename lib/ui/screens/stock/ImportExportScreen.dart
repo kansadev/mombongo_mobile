@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/models/article.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class ImportExportScreen extends StatefulWidget {
   const ImportExportScreen({super.key});
@@ -100,7 +101,7 @@ class _ImportExportScreenState extends State<ImportExportScreen> {
       
       setState(() {
         _isLoading = false;
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
       });
       
       if (mounted) {
@@ -111,7 +112,7 @@ class _ImportExportScreenState extends State<ImportExportScreen> {
             
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur chargement articles ($societyInfo): $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
           ),
         );

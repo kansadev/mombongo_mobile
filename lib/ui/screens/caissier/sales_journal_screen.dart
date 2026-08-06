@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import '../../../services/service_locator.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class SalesJournalScreen extends StatefulWidget {
   final int? idCaissier;
@@ -167,7 +168,7 @@ class _SalesJournalScreenState extends State<SalesJournalScreen> {
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

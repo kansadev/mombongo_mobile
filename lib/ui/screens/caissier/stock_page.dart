@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class StockPage extends StatefulWidget {
   const StockPage({super.key});
@@ -78,7 +79,7 @@ class _StockPageState extends State<StockPage> {
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = 'Erreur lors du chargement: $e';
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

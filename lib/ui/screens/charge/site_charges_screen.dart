@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'create_charge_screen.dart';
 import 'edit_charge_screen.dart';
 import 'charges_synthese_screen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class SiteChargesScreen extends StatefulWidget {
   const SiteChargesScreen({super.key});
@@ -170,7 +171,7 @@ class _SiteChargesScreenState extends State<SiteChargesScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }
@@ -274,7 +275,7 @@ class _SiteChargesScreenState extends State<SiteChargesScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(apiErrorUserMessage(e)), backgroundColor: Colors.red),
         );
       }
     }

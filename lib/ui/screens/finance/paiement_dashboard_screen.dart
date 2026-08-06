@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/caissier/paiements_screen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class PaiementDashboardScreen extends StatefulWidget {
   const PaiementDashboardScreen({super.key});
@@ -153,7 +154,7 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
       debugPrint('Erreur chargement paiements: $e');
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

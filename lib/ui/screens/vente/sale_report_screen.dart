@@ -5,6 +5,7 @@ import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/profil_screen.dart';
 import 'package:mombongo/ui/screens/vente/ventes_annulees_screen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class RapportsVenteScreen extends StatefulWidget {
   const RapportsVenteScreen({super.key});
@@ -113,7 +114,7 @@ class _RapportsVenteScreenState extends State<RapportsVenteScreen> {
 
       setState(() {
         if (kDebugMode) {
-          _errorMessage = 'Erreur lors du chargement des ventes: $e';
+          _errorMessage = apiErrorUserMessage(e);
         } else {
           _errorMessage =
               'Une erreur est survenue lors du chargement des ventes. Veuillez reessayer.';

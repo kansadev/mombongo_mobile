@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../../services/service_locator.dart';
 import 'utilisateur_detail_screen.dart';
 import 'new_user_screen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class UtilisateursScreen extends StatefulWidget {
   const UtilisateursScreen({super.key});
@@ -78,7 +79,7 @@ class _UtilisateursScreenState extends State<UtilisateursScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors du chargement des utilisateurs: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
           ),
         );
@@ -426,7 +427,7 @@ class _UtilisateursScreenState extends State<UtilisateursScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
           ),
         );
@@ -477,7 +478,7 @@ class _UtilisateursScreenState extends State<UtilisateursScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors de la suppression: $e'),
+            content: Text(apiErrorUserMessage(e)),
             backgroundColor: Colors.red,
           ),
         );

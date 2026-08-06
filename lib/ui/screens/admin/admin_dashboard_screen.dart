@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../services/service_locator.dart';
 import '../../../models/site.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -82,7 +83,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur lors du chargement du dashboard: $e'),
+          content: Text(apiErrorUserMessage(e)),
           backgroundColor: Colors.red,
         ),
       );

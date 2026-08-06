@@ -7,6 +7,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pdfLib;
 import 'package:printing/printing.dart';
 import 'dart:io' as io;
+import 'package:mombongo/utils/api_error_message.dart';
 
 class DetteDetailScreen extends StatefulWidget {
   final Map<String, dynamic> dette;
@@ -252,7 +253,7 @@ class _DetteDetailScreenState extends State<DetteDetailScreen> {
         debugPrint('Erreur paiement: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+            SnackBar(content: Text(apiErrorUserMessage(e)), backgroundColor: Colors.red),
           );
         }
       } finally {
@@ -304,7 +305,7 @@ class _DetteDetailScreenState extends State<DetteDetailScreen> {
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(apiErrorUserMessage(e)), backgroundColor: Colors.red),
         );
       }
     }

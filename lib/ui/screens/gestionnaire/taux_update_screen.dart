@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mombongo/models/devise_model.dart';
 import 'package:mombongo/services/api_service.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 
 class TauxUpdateScreen extends StatefulWidget {
@@ -61,7 +62,7 @@ class TauxUpdateScreenState extends State<TauxUpdateScreen> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur: $e'),
+          content: Text(apiErrorUserMessage(e)),
           backgroundColor: Colors.red,
         ),
       );

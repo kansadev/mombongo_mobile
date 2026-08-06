@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
 
 /// Demande une description pour un service (ex. pressing) à la confirmation de vente.
 Future<String?> showServiceDescriptionDialog(

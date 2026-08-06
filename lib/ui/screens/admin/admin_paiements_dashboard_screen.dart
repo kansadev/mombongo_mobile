@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 /// Dashboard paiements du site opérationnel (même vue que le gestionnaire).
 class AdminPaiementsDashboardScreen extends StatefulWidget {
@@ -57,7 +58,7 @@ class _AdminPaiementsDashboardScreenState
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

@@ -1,10 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/caissier/commande_detail_screen.dart';
 import 'package:mombongo/utils/commande_invoice_helper.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 class VentesAnnuleesScreen extends StatefulWidget {
   const VentesAnnuleesScreen({super.key});
@@ -112,9 +112,7 @@ class _VentesAnnuleesScreenState extends State<VentesAnnuleesScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = kReleaseMode
-            ? 'Erreur lors du chargement des remboursements'
-            : 'Erreur: $e';
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }

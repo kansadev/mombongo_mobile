@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/charge/create_charge_screen.dart';
+import 'package:mombongo/utils/api_error_message.dart';
 
 
 class ChargesScreen extends StatefulWidget {
@@ -146,7 +147,7 @@ class _ChargesScreenState extends State<ChargesScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = apiErrorUserMessage(e);
         _isLoading = false;
       });
     }
