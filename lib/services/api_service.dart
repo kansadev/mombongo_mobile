@@ -16,23 +16,77 @@ class ApiService {
   static const String _baseUrlDev = 'https://dev-mombongo.asdc-rdc.org';
   static const String _baseUrlProd = 'https://prod-mombongo.asdc-rdc.org';
 
-  // Environment selection: 0 = Test, 1 = Dev, 2 = Prod
-  static const int environment =
-      0; // Modifier cette valeur pour changer d'environnement
+  static const Map<String, String> _baseUrls = {
+    'test': _baseUrlTest,
+    'dev': _baseUrlDev,
+    'prod': _baseUrlProd,
+  };
 
-  // Getter pour obtenir l'URL de base selon l'environnement
-  String get baseUrl {
-    switch (environment) {
-      case 0:
-        return _baseUrlTest;
-      case 1:
-        return _baseUrlDev;
-      case 2:
-        return _baseUrlProd;
-      default:
-        return _baseUrlTest;
+  /// Environnement choisi AU BUILD (plus de constante à modifier) :
+  ///   flutter run --dart-define=ENV=dev
+  ///   flutter build apk --release --dart-define=ENV=prod
+  /// Valeurs : test, dev, prod.
+  /// Option : --dart-define=API_BASE_URL=https://... pour un autre serveur.
+  static const String _envDefine = String.fromEnvironment('ENV');
+  static const String _baseUrlDefine = String.fromEnvironment('API_BASE_URL');
+
+  /// Configuration résolue une seule fois pour toute l'application.
+  static final ApiEnvironmentConfig environment = resolveEnvironment();
+
+  /// Nom de l'environnement actif (test, dev, prod ou custom).
+  static String get environmentName => environment.name;
+
+  /// Résout l'environnement à partir des valeurs --dart-define.
+  /// - debug/profile sans ENV : serveur de test ;
+  /// - release sans ENV ni API_BASE_URL : erreur (pas de prod sur le test) ;
+  /// - valeur inconnue (ex. ENV=prd) : erreur explicite.
+  /// L'erreur est affichée au démarrage (voir main.dart).
+  static ApiEnvironmentConfig resolveEnvironment({
+    String env = _envDefine,
+    String baseUrlOverride = _baseUrlDefine,
+    bool isRelease = kReleaseMode,
+  }) {
+    final name = env.trim().toLowerCase();
+    final override = baseUrlOverride.trim();
+
+    if (name.isNotEmpty && !_baseUrls.containsKey(name)) {
+      return ApiEnvironmentConfig.error(
+        'ENV=$env est inconnu. Valeurs possibles : ${_baseUrls.keys.join(', ')}.',
+      );
     }
+
+    if (override.isNotEmpty) {
+      final uri = Uri.tryParse(override);
+      final valid =
+          uri != null &&
+          (uri.scheme == 'https' || uri.scheme == 'http') &&
+          uri.host.isNotEmpty;
+      if (!valid) {
+        return ApiEnvironmentConfig.error(
+          'API_BASE_URL=$override n\'est pas une URL http(s) valide.',
+        );
+      }
+      return ApiEnvironmentConfig(
+        name: name.isEmpty ? 'custom' : name,
+        baseUrl: override.replaceAll(RegExp(r'/+$'), ''),
+      );
+    }
+
+    if (name.isEmpty) {
+      if (isRelease) {
+        return const ApiEnvironmentConfig.error(
+          'Build release sans environnement. Relancez le build avec '
+          '--dart-define=ENV=prod (ou test, dev).',
+        );
+      }
+      return const ApiEnvironmentConfig(name: 'test', baseUrl: _baseUrlTest);
+    }
+
+    return ApiEnvironmentConfig(name: name, baseUrl: _baseUrls[name]!);
   }
+
+  // URL de base de l'environnement choisi au build.
+  String get baseUrl => environment.baseUrl;
 
   String? _authToken;
   String? _refreshToken;
@@ -2440,3 +2494,18 @@ class ApiService {
   }
 }
 
+/// Environnement API résolu au démarrage (voir [ApiService.resolveEnvironment]).
+class ApiEnvironmentConfig {
+  const ApiEnvironmentConfig({required this.name, required this.baseUrl})
+    : error = null;
+
+  const ApiEnvironmentConfig.error(String this.error) : name = '', baseUrl = '';
+
+  final String name;
+  final String baseUrl;
+
+  /// Message à afficher si la configuration du build est invalide.
+  final String? error;
+
+  bool get isValid => error == null;
+}

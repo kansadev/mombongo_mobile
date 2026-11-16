@@ -7,6 +7,7 @@ import 'package:mombongo/ui/screens/caissier/sales_journal_screen.dart';
 import 'package:mombongo/ui/screens/gestionnaire_screen.dart';
 import 'package:mombongo/ui/screens/admin/admin_screen.dart';
 import 'package:mombongo/ui/screens/home_screen.dart';
+import 'services/api_service.dart';
 import 'services/service_locator.dart';
 import 'services/cart_service.dart';
 import 'ui/screens/login_screen.dart';
@@ -17,6 +18,14 @@ void main() async {
   // Évite les tentatives de téléchargement réseau des polices Google
   // quand l'application fonctionne hors ligne.
   GoogleFonts.config.allowRuntimeFetching = false;
+
+  // Environnement API choisi au build (--dart-define=ENV=test|dev|prod) :
+  // une configuration invalide bloque le démarrage avec un message clair.
+  final envConfig = ApiService.environment;
+  if (!envConfig.isValid) {
+    runApp(ConfigErrorApp(message: envConfig.error!));
+    return;
+  }
   
   // Initialize services
   await locator.initialize();
@@ -203,9 +212,9 @@ class _MainScreenState extends State<MainScreen> {
             child: Container(
               height: 24,
               color: const Color(0xFFA7001E), // Couleur rouge de la palette
-              child: const Center(
+              child: Center(
                 child: Text(
-                  'En mode développement',
+                  'En mode développement · ${ApiService.environmentName.toUpperCase()}',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 12,
@@ -222,5 +231,41 @@ class _MainScreenState extends State<MainScreen> {
     }
     
     return screen;
+  }
+}
+
+/// Écran affiché à la place de l'application quand le build n'a pas de
+/// configuration d'environnement valide (voir [ApiService.resolveEnvironment]).
+class ConfigErrorApp extends StatelessWidget {
+  const ConfigErrorApp({super.key, required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.settings_outlined, size: 48),
+                const SizedBox(height: 16),
+                const Text(
+                  'Configuration du build invalide',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+                Text(message, textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

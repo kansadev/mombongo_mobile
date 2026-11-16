@@ -1,14 +1,24 @@
+import 'dart:io' as io;
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:mombongo/models/devise_model.dart';
 import 'package:mombongo/models/taux.dart';
 import 'package:mombongo/services/app_currency_preference.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/caissier/change_password_screen.dart';
+import 'package:mombongo/ui/screens/caissier/profil/profil_infos_screen.dart';
+import 'package:mombongo/ui/screens/caissier/profil/recus_settings_screen.dart';
 import 'package:mombongo/ui/screens/edit_profile_screen.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io' as io;
+import 'package:mombongo/ui/theme/pos_colors.dart';
+import 'package:mombongo/ui/widgets/pos/settings_tiles.dart';
+import 'package:mombongo/utils/google_fonts_compat.dart';
+import 'package:mombongo/utils/receipt/receipt_paper.dart';
+import 'package:mombongo/utils/receipt/receipt_pdf_builder.dart';
+import 'package:mombongo/utils/receipt/receipt_print_dialog.dart';
 import '../login_screen.dart';
+
+/// Profil du caissier : page centrale organisée en sections
+/// (Compte, Caisse, Reçus, Données, Session).
 
 class ProfilCaissierScreen extends StatefulWidget {
   const ProfilCaissierScreen({super.key});
@@ -18,21 +28,13 @@ class ProfilCaissierScreen extends StatefulWidget {
 }
 
 class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
-  static const String _fastSalePrefKey = 'pref_fast_sale_enabled';
   static const String _articleFilterPrefKey = 'pref_article_filter_with_stock';
-  static const String _receiptFooterPrefKey = 'pref_receipt_footer_message';
-  static const String _receiptLogoPrefKey = 'pref_receipt_logo_path';
-  bool _fastSaleEnabled = true;
   bool _articleFilterWithStock = true; // Par défaut: articles avec stock
   String _currencyCode = AppCurrencyPreference.defaultCode;
   String _tauxActuel = '1'; // show 1 by default until we fetch real rate
   String _nomDevise = '';
-  String _receiptFooterMessage =
-      ''; // Message personnalisé pour le pied de reçu
-  String _receiptLogoPath = ''; // Chemin du logo pour le reçu
   List<dynamic> _devises = [];
   bool _isLoadingDevises = false;
-  final ImagePicker _imagePicker = ImagePicker();
 
   List<DropdownMenuItem<String>> _buildCurrencyItems() {
     debugPrint(
@@ -107,13 +109,6 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
     return items;
   }
 
-  String? _resolveSelectedCurrency(List<DropdownMenuItem<String>> items) {
-    if (items.any((item) => item.value == _currencyCode)) {
-      return _currencyCode;
-    }
-    return null;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -121,6 +116,7 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
     _loadDevises();
     locator.syncService.addListener(_handleSyncStateChanged);
   }
+
   @override
   void dispose() {
     locator.syncService.removeListener(_handleSyncStateChanged);
@@ -130,7 +126,6 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
   void _handleSyncStateChanged() {
     if (mounted) setState(() {});
   }
-
 
   Future<void> _loadDevises() async {
     final currentUser = locator.authRepository.currentUser;
@@ -226,27 +221,17 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
 
   Future<void> _loadPreferences() async {
     try {
-      final savedFastSale = locator.databaseService.get<bool>(_fastSalePrefKey);
       final savedArticleFilter = locator.databaseService.get<bool>(
         _articleFilterPrefKey,
       );
       final savedCurrency = AppCurrencyPreference.readCode(
         locator.databaseService,
       );
-      final savedReceiptFooter = locator.databaseService.get<String>(
-        _receiptFooterPrefKey,
-      );
-      final savedReceiptLogo = locator.databaseService.get<String>(
-        _receiptLogoPrefKey,
-      );
       if (!mounted) return;
       setState(() {
-        _fastSaleEnabled = savedFastSale ?? true;
         _articleFilterWithStock =
             savedArticleFilter ?? true; // Par défaut: articles avec stock
         _currencyCode = savedCurrency;
-        _receiptFooterMessage = savedReceiptFooter ?? '';
-        _receiptLogoPath = savedReceiptLogo ?? '';
       });
       // keep service in sync so other pages can read the preferred code
       // without hitting AppCurrencyPreference directly.
@@ -259,21 +244,11 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _fastSaleEnabled = true;
         _articleFilterWithStock = true; // Par défaut: articles avec stock
         _currencyCode = AppCurrencyPreference.defaultCode;
       });
       // rate info will update when devises are loaded later (see above)
     }
-  }
-
-  Future<void> _setFastSaleEnabled(bool value) async {
-    setState(() {
-      _fastSaleEnabled = value;
-    });
-    try {
-      await locator.databaseService.save<bool>(_fastSalePrefKey, value);
-    } catch (_) {}
   }
 
   Future<void> _setArticleFilterWithStock(bool value) async {
@@ -282,46 +257,6 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
     });
     try {
       await locator.databaseService.save<bool>(_articleFilterPrefKey, value);
-    } catch (_) {}
-  }
-
-  Future<void> _setReceiptFooterMessage(String value) async {
-    setState(() {
-      _receiptFooterMessage = value;
-    });
-    try {
-      await locator.databaseService.save<String>(_receiptFooterPrefKey, value);
-    } catch (_) {}
-  }
-
-  Future<void> _pickReceiptLogo() async {
-    try {
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 300,
-        maxHeight: 150,
-        imageQuality: 80,
-      );
-      if (image != null) {
-        setState(() {
-          _receiptLogoPath = image.path;
-        });
-        await locator.databaseService.save<String>(
-          _receiptLogoPrefKey,
-          image.path,
-        );
-      }
-    } catch (e) {
-      debugPrint('Erreur lors de la sélection du logo: $e');
-    }
-  }
-
-  Future<void> _removeReceiptLogo() async {
-    setState(() {
-      _receiptLogoPath = '';
-    });
-    try {
-      await locator.databaseService.save<String>(_receiptLogoPrefKey, '');
     } catch (_) {}
   }
 
@@ -387,909 +322,317 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
     } catch (_) {}
   }
 
+  // -------------------------------------------------------------------------
+  // Interface
+  // -------------------------------------------------------------------------
+
+  /// Libellé de la devise choisie (nom renvoyé par l'API si disponible).
+  String get _currencyLabel {
+    for (final item in _buildCurrencyItems()) {
+      if (item.value == _currencyCode && item.child is Text) {
+        return (item.child as Text).data ?? _currencyCode;
+      }
+    }
+    return AppCurrencyPreference.displayNameFor(_currencyCode);
+  }
+
+  String get _receiptSummary {
+    final db = locator.databaseService;
+    final paper = ReceiptPaperPreference.read(db);
+    final copies = ReceiptPrintFlow.defaultCopies();
+    String logo = '';
+    String footer = '';
+    try {
+      logo = db.get<String>(ReceiptBranding.logoPrefKey) ?? '';
+      footer = db.get<String>(ReceiptBranding.footerPrefKey) ?? '';
+    } catch (_) {}
+    final hasLogo = logo.isNotEmpty && io.File(logo).existsSync();
+    return [
+      paper.label,
+      '$copies ${copies > 1 ? 'copies' : 'copie'}',
+      hasLogo ? 'logo' : 'sans logo',
+      if (footer.trim().isNotEmpty) 'message',
+    ].join(' · ');
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+    final letters = parts.take(2).map((p) => p[0].toUpperCase()).join();
+    return letters.isEmpty ? '?' : letters;
+  }
+
+  Future<void> _openCurrencyPicker() async {
+    final items = _buildCurrencyItems();
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune devise disponible pour ce site')),
+      );
+      return;
+    }
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: PosColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
+              child: Text(
+                'Devise d\'affichage',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: PosColors.ink,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                'Utilisée pour la facturation, les calculs et la comptabilité.',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: PosColors.muted,
+                ),
+              ),
+            ),
+            for (final item in items)
+              ListTile(
+                title: item.child,
+                trailing: item.value == _currencyCode
+                    ? const Icon(Icons.check_circle, color: PosColors.green)
+                    : null,
+                onTap: () => Navigator.pop(ctx, item.value),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (selected != null && selected != _currencyCode) {
+      await _setCurrencyCode(selected);
+    }
+  }
+
+  Future<void> _syncNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await locator.syncService.syncNow();
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          result.remaining == 0 && result.synced == 0 && result.failed == 0
+              ? (locator.syncService.isOnline
+                    ? 'Aucune donnée à synchroniser'
+                    : 'Synchronisation impossible hors ligne')
+              : result.failed == 0
+              ? '${result.synced} vente(s) synchronisée(s)'
+              : '${result.synced} synchronisée(s), ${result.failed} échec(s), ${result.remaining} restante(s)',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _push(Widget screen) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    // Profil ou réglages de reçu éventuellement modifiés.
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
-    final currentUser = locator.authRepository.currentUser;
-    final cs = Theme.of(context).colorScheme;
+    final user = locator.authRepository.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Aucune donnée utilisateur disponible')),
+      );
+    }
+
+    final online = locator.syncService.isOnline;
+    final pending = locator.syncService.pendingCount;
+    final syncLabel = !online
+        ? 'Hors ligne · reprise automatique au retour du réseau'
+        : (pending > 0
+              ? '$pending vente(s) en attente de synchronisation'
+              : 'À jour · aucune vente en attente');
+    final rate = _currencyCode == AppCurrencyPreference.usdCode
+        ? ''
+        : ' · 1 USD = $_tauxActuel CDF${_nomDevise.isNotEmpty ? ' ($_nomDevise)' : ''}';
 
     return Scaffold(
-      body: currentUser == null
-          ? const Center(child: Text('Aucune donnee utilisateur disponible'))
-          : CustomScrollView(
-              slivers: [
-                // Header avec gradient
-                SliverAppBar(
-                  expandedHeight: 200,
-                  pinned: true,
-                  backgroundColor: Theme.of(context).colorScheme.secondary,
-                  flexibleSpace: FlexibleSpaceBar(
-                    title: Text(
-                      'Mon Profil',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSecondary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20,
-                      ),
-                    ),
-                    centerTitle: true,
-                    background: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Theme.of(context).colorScheme.secondary,
-                            Theme.of(context).colorScheme.tertiary,
-                          ],
-                        ),
-                      ),
-                      child: SafeArea(
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SizedBox(height: 40),
-                              // Avatar avec bordure
-                              Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 4,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.3),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 5),
-                                    ),
-                                  ],
-                                ),
-                                child: CircleAvatar(
-                                  radius: 40,
-                                  backgroundColor: Colors.white,
-                                  child: Text(
-                                    _getInitials(currentUser.nomComplet),
-                                    style: const TextStyle(
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF2C3E50),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(height: 30),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Contenu
-                SliverPadding(
-                  padding: const EdgeInsets.all(16),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      // Informations personnelles
-                      _buildSectionTitle('Informations personnelles'),
-                      const SizedBox(height: 12),
-                      _buildInfoCard(
-                        icon: Icons.person,
-                        iconColor: Colors.blue,
-                        children: [
-                          _buildInfoTile(
-                            icon: Icons.badge,
-                            label: 'Nom complet',
-                            value: currentUser.nomComplet,
-                          ),
-                          _buildDivider(),
-                          _buildInfoTile(
-                            icon: Icons.email,
-                            label: 'Email / Login',
-                            value: currentUser.login,
-                          ),
-                          _buildDivider(),
-                          _buildInfoTile(
-                            icon: Icons.phone,
-                            label: 'Téléphone',
-                            value: currentUser.numeroTelephone,
-                          ),
-                          _buildDivider(),
-                          _buildInfoTile(
-                            icon: Icons.cake,
-                            label: 'Date de naissance',
-                            value:
-                                '${DateFormat('dd/MM/yyyy').format(currentUser.dateNonce)} (${_calculateAge(currentUser.dateNonce)} ans)',
-                          ),
-                          _buildDivider(),
-                          _buildInfoTile(
-                            icon: currentUser.sexe == 'M'
-                                ? Icons.male
-                                : Icons.female,
-                            label: 'Sexe',
-                            value: currentUser.sexe == 'M'
-                                ? 'Masculin'
-                                : 'Féminin',
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Informations professionnelles
-                      _buildSectionTitle('Informations professionnelles'),
-                      const SizedBox(height: 12),
-                      _buildInfoCard(
-                        icon: Icons.business,
-                        iconColor: Colors.green,
-                        children: [
-                          _buildInfoTile(
-                            icon: Icons.work,
-                            label: 'Rôle',
-                            value: currentUser.role,
-                          ),
-                          _buildDivider(),
-                          _buildInfoTile(
-                            icon: Icons.store,
-                            label: 'Site',
-                            value: currentUser.nomSite,
-                          ),
-                          _buildDivider(),
-                          _buildInfoTile(
-                            icon: Icons.corporate_fare,
-                            label: 'Société',
-                            value: currentUser.nomSociete,
-                          ),
-                          if (currentUser.adresseSite.isNotEmpty) ...[
-                            _buildDivider(),
-                            _buildInfoTile(
-                              icon: Icons.location_on,
-                              label: 'Adresse',
-                              value: currentUser.adresseSite,
-                            ),
-                          ],
-                          if (currentUser.contact.isNotEmpty) ...[
-                            _buildDivider(),
-                            _buildInfoTile(
-                              icon: Icons.contact_phone,
-                              label: 'Contact site',
-                              value: currentUser.contact,
-                            ),
-                          ],
-                        ],
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      _buildSectionTitle('Préférences'),
-                      const SizedBox(height: 12),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: cs.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            SwitchListTile(
-                              title: Text(
-                                'Vente rapide',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.onSurface,
-                                ),
-                              ),
-                              subtitle: Text(
-                                'Alternative au panier (vente en une seule étape)',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: cs.onSurfaceVariant,
-                                ),
-                              ),
-                              value: _fastSaleEnabled,
-                              activeThumbColor: Theme.of(
-                                context,
-                              ).colorScheme.tertiary,
-                              onChanged: _setFastSaleEnabled,
-                            ),
-                            Divider(height: 1, color: cs.outlineVariant),
-                            SwitchListTile(
-                              title: Text(
-                                'Articles avec stock',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.onSurface,
-                                ),
-                              ),
-                              subtitle: Text(
-                                'Afficher par défaut les articles avec stock',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: cs.onSurfaceVariant,
-                                ),
-                              ),
-                              value: _articleFilterWithStock,
-                              activeThumbColor: Theme.of(
-                                context,
-                              ).colorScheme.tertiary,
-                              onChanged: _setArticleFilterWithStock,
-                            ),
-                            Divider(height: 1, color: Colors.grey[200]),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                12,
-                                16,
-                                16,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Devise',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF2C3E50),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Builder(
-                                    builder: (_) {
-                                      final currencyItems =
-                                          _buildCurrencyItems();
-                                      final selectedCurrency =
-                                          _resolveSelectedCurrency(
-                                            currencyItems,
-                                          );
-
-                                      return DropdownButtonFormField<String>(
-                                        key: ValueKey(
-                                          'currency_${selectedCurrency ?? 'none'}',
-                                        ),
-                                        initialValue: selectedCurrency,
-                                        hint: Text(
-                                          _isLoadingDevises
-                                              ? 'Chargement...'
-                                              : 'Sélectionner une devise',
-                                        ),
-                                        decoration: InputDecoration(
-                                          prefixIcon: const Icon(
-                                            Icons.payments_outlined,
-                                          ),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 12,
-                                                vertical: 12,
-                                              ),
-                                        ),
-                                        items: currencyItems,
-                                        onChanged: _isLoadingDevises
-                                            ? null
-                                            : (value) {
-                                                if (value == null) return;
-                                                _setCurrencyCode(value);
-                                              },
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            // Afficher le taux de change actuel
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.blue.shade100),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.currency_exchange,
-                                    color: Colors.blue.shade700,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Taux de change actuel',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.blue.shade700,
-                                          ),
-                                        ),
-                                        Text(
-                                          // always show rate relative to USD; if the selected
-                                          // currency is CDF the user already understands the
-                                          // conversion, so displaying "1 CDF = 2850 CDF" would
-                                          // be misleading.
-                                          '1 USD = $_tauxActuel CDF ($_nomDevise)',
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF2C3E50),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Cette devise sera utilisée pour la facturation, les calculs et la comptabilité.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _buildActionCard(
-                              icon: Icons.edit,
-                              title: 'Modifier le profil',
-                              subtitle: 'Mettre à jour vos informations',
-                              color: Colors.blue,
-                              onTap: () => _showEditProfileDialog(context),
-                            ),
-
-                            const SizedBox(height: 12),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: cs.surface,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.05),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Logo du reçu
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.image,
-                                          color: Colors.purple.shade700,
-                                          size: 20,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Logo de l\'entreprise',
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600,
-                                            color: cs.onSurface,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Ce logo apparaîtra dans l\'en-tête du reçu (préférer image noir et blanc)',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                    color: cs.onSurfaceVariant,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    if (_receiptLogoPath.isNotEmpty) ...[
-                                      Container(
-                                        height: 80,
-                                        width: double.infinity,
-                                        decoration: BoxDecoration(
-                                          border: Border.all(
-                                        color: cs.outlineVariant,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                          child: Image.file(
-                                            io.File(_receiptLogoPath),
-                                            fit: BoxFit.contain,
-                                            errorBuilder:
-                                                (context, error, stackTrace) {
-                                                  return Center(
-                                                    child: Icon(
-                                                      Icons.broken_image,
-                                                      color: Colors.grey[400],
-                                                      size: 40,
-                                                    ),
-                                                  );
-                                                },
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: OutlinedButton.icon(
-                                              onPressed: _pickReceiptLogo,
-                                              icon: const Icon(
-                                                Icons.edit,
-                                                size: 18,
-                                              ),
-                                              label: const Text('Modifier'),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: OutlinedButton.icon(
-                                              onPressed: _removeReceiptLogo,
-                                              icon: const Icon(
-                                                Icons.delete,
-                                                size: 18,
-                                              ),
-                                              label: const Text('Supprimer'),
-                                              style: OutlinedButton.styleFrom(
-                                                foregroundColor: Colors.red,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ] else ...[
-                                      InkWell(
-                                        onTap: _pickReceiptLogo,
-                                        child: Container(
-                                          height: 80,
-                                          width: double.infinity,
-                                          decoration: BoxDecoration(
-                                            border: Border.all(
-                                              color: Colors.grey.shade300,
-                                              style: BorderStyle.solid,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                            color: Colors.grey.shade50,
-                                          ),
-                                          child: Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Icon(
-                                                Icons.add_photo_alternate,
-                                                color: Colors.grey[400],
-                                                size: 32,
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                'Cliquez pour ajouter un logo',
-                                                style: TextStyle(
-                                                  color: Colors.grey[600],
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 16),
-                                    Divider(color: Colors.grey[200]),
-                                    const SizedBox(height: 16),
-                                    // Message du pied de reçu
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.receipt_long,
-                                          color: Colors.green.shade700,
-                                          size: 20,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        const Text(
-                                          'Message du reçu',
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF2C3E50),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Ce message apparaîtra au bas du reçu',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextFormField(
-                                      initialValue: _receiptFooterMessage,
-                                      maxLines: 3,
-                                      decoration: InputDecoration(
-                                        hintText:
-                                            'Ex: Ce reçu fait office de preuve de paiement. Conservez-le soigneusement.',
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        contentPadding: const EdgeInsets.all(
-                                          12,
-                                        ),
-                                      ),
-                                      onChanged: _setReceiptFooterMessage,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _buildActionCard(
-                              icon: locator.syncService.isOnline
-                                  ? Icons.sync
-                                  : Icons.cloud_off,
-                              title: 'Synchronisation manuelle',
-                              subtitle: locator.syncService.isOnline
-                                  ? (locator.syncService.pendingCount > 0
-                                      ? '${locator.syncService.pendingCount} vente(s) en attente de synchronisation'
-                                      : 'Aucune vente en attente, vous pouvez quand même relancer la synchronisation')
-                                  : 'Hors ligne pour le moment, la synchronisation reprendra au retour du réseau',
-                              color: locator.syncService.isOnline
-                                  ? Colors.blue
-                                  : Colors.grey,
-                              onTap: () async {
-                                final messenger = ScaffoldMessenger.of(context);
-                                final result = await locator.syncService
-                                    .syncNow();
-                                if (!mounted) return;
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      result.remaining == 0 &&
-                                              result.synced == 0 &&
-                                              result.failed == 0
-                                          ? (locator.syncService.isOnline
-                                              ? 'Aucune donnée à synchroniser'
-                                              : 'Synchronisation impossible hors ligne')
-                                          : result.failed == 0
-                                              ? '${result.synced} vente(s) synchronisée(s)'
-                                              : '${result.synced} synchronisée(s), ${result.failed} échec(s), ${result.remaining} restante(s)',
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                            _buildActionCard(
-                              icon: Icons.lock,
-                              title: 'Changer le mot de passe',
-                              subtitle: 'Mettre à jour votre mot de passe',
-                              color: Colors.orange,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        const ChangePasswordScreen(),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                            _buildActionCard(
-                              icon: Icons.logout,
-                              title: 'Déconnexion',
-                              subtitle: 'Se déconnecter de votre compte',
-                              color: Colors.red,
-                              onTap: () => _handleLogout(context),
-                            ),
-                            const SizedBox(height: 32),
-                            Center(
-                              child: Column(
-                                children: [
-                                  Text(
-                                    'Développer par',
-                                    style: TextStyle(
-                                      color: Colors.grey[600],
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Kansa Business',
-                                    style: TextStyle(
-                                      color: Colors.grey[800],
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 24),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ]),
-                  ),
-
-                  // Footer
-                ),
-              ],
-            ),
-    );
-  }
-
-  String _getInitials(String name) {
-    if (name.isEmpty) return 'U';
-    final parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[parts.length - 1][0]}'.toUpperCase();
-    }
-    return name[0].toUpperCase();
-  }
-
-  int _calculateAge(DateTime birthDate) {
-    final today = DateTime.now();
-    int age = today.year - birthDate.year;
-
-    // v�rifier si l'anniversaire n'est pas encore pass� cette ann�e
-    if (today.month < birthDate.month ||
-        (today.month == birthDate.month && today.day < birthDate.day)) {
-      age--;
-    }
-
-    return age;
-  }
-
-  Widget _buildSectionTitle(String title) {
-    final cs = Theme.of(context).colorScheme;
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: cs.onSurface,
-      ),
-    );
-  }
-
-  Widget _buildInfoCard({
-    required IconData icon,
-    required Color iconColor,
-    required List<Widget> children,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // En-tête de la carte
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: iconColor,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(child: Container()),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(children: children),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoTile({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: cs.onSurfaceVariant),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDivider() {
-    final cs = Theme.of(context).colorScheme;
-    return Divider(height: 24, thickness: 1, color: cs.outlineVariant);
-  }
-
-  Widget _buildActionCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
+      backgroundColor: PosColors.background,
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+            Text(
+              'Profil',
+              style: GoogleFonts.poppins(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: PosColors.ink,
               ),
             ),
-            Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+            const SizedBox(height: 14),
+            _IdentityCard(
+              initials: _initials(user.nomComplet),
+              name: user.nomComplet,
+              line1: [
+                user.role,
+                user.nomSite,
+              ].where((v) => v.trim().isNotEmpty).join(' · '),
+              line2: user.nomSociete,
+              onEdit: () => _push(const EditProfileScreen()),
+            ),
+            const SizedBox(height: 18),
+            SettingsSection(
+              title: 'Compte',
+              children: [
+                SettingsTile(
+                  icon: Icons.person_outline,
+                  title: 'Mes informations',
+                  subtitle: 'Coordonnées, site et société',
+                  onTap: () => _push(const ProfilInfosScreen()),
+                ),
+                SettingsTile(
+                  icon: Icons.lock_outline,
+                  title: 'Mot de passe',
+                  subtitle: 'Modifier votre mot de passe',
+                  onTap: () => _push(const ChangePasswordScreen()),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            SettingsSection(
+              title: 'Caisse',
+              children: [
+                SettingsTile(
+                  icon: Icons.inventory_2_outlined,
+                  title: 'Catalogue par défaut',
+                  subtitle: 'Filtre affiché à l\'ouverture de la vente',
+                  below: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: true, label: Text('Produits')),
+                      ButtonSegment(value: false, label: Text('Services')),
+                    ],
+                    selected: {_articleFilterWithStock},
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onSelectionChanged: (s) =>
+                        _setArticleFilterWithStock(s.first),
+                  ),
+                ),
+                SettingsTile(
+                  icon: Icons.currency_exchange,
+                  title: 'Devise d\'affichage',
+                  subtitle: _isLoadingDevises
+                      ? 'Chargement…'
+                      : '$_currencyLabel$rate',
+                  onTap: _isLoadingDevises ? null : _openCurrencyPicker,
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            SettingsSection(
+              title: 'Reçus',
+              children: [
+                SettingsTile(
+                  icon: Icons.print_outlined,
+                  title: 'Reçus & impression',
+                  subtitle: _receiptSummary,
+                  onTap: () => _push(const RecusSettingsScreen()),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            SettingsSection(
+              title: 'Données',
+              children: [
+                SettingsTile(
+                  icon: online ? Icons.sync : Icons.cloud_off_outlined,
+                  title: 'Synchronisation',
+                  subtitle: syncLabel,
+                  subtitleColor: online && pending == 0
+                      ? PosColors.green
+                      : PosColors.amber,
+                  trailing: OutlinedButton(
+                    onPressed: _syncNow,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: PosColors.green,
+                      side: const BorderSide(color: PosColors.green),
+                      visualDensity: VisualDensity.compact,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text('Synchroniser'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            SizedBox(
+              height: 50,
+              child: OutlinedButton.icon(
+                onPressed: () => _handleLogout(context),
+                icon: const Icon(Icons.logout),
+                label: const Text('Se déconnecter'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: PosColors.terracotta,
+                  backgroundColor: PosColors.surface,
+                  side: const BorderSide(color: PosColors.line),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Mombongo · développé par Kansa Business',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(fontSize: 11, color: PosColors.muted),
+            ),
           ],
         ),
       ),
     );
-  }
-
-  Future<void> _showEditProfileDialog(BuildContext context) async {
-    final updated = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-    );
-
-    if (!mounted) return;
-    if (updated == true) {
-      setState(() {});
-    }
   }
 
   Future<void> _handleLogout(BuildContext context) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Déconnexion'),
+        content: const Text('Êtes-vous sûr de vouloir vous déconnecter ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
           ),
-          title: const Text('Déconnexion'),
-          content: const Text('Êtes-vous sûr de vouloir vous déconnecter ?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: PosColors.terracotta,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: const Text('Déconnexion'),
             ),
-          ],
-        );
-      },
+            child: const Text('Déconnexion'),
+          ),
+        ],
+      ),
     );
 
     if (confirm == true) {
@@ -1297,10 +640,103 @@ class _ProfilCaissierScreenState extends State<ProfilCaissierScreen> {
       if (context.mounted) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
           (route) => false,
         );
       }
     }
+  }
+}
+
+class _IdentityCard extends StatelessWidget {
+  const _IdentityCard({
+    required this.initials,
+    required this.name,
+    required this.line1,
+    required this.line2,
+    required this.onEdit,
+  });
+
+  final String initials;
+  final String name;
+  final String line1;
+  final String line2;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: PosColors.ink,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 28,
+            backgroundColor: PosColors.green,
+            child: Text(
+              initials,
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                if (line1.isNotEmpty)
+                  Text(
+                    line1,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: PosColors.onInkMuted,
+                    ),
+                  ),
+                if (line2.isNotEmpty)
+                  Text(
+                    line2,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: PosColors.onInkMuted,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: onEdit,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.white.withValues(alpha: 0.12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('Modifier'),
+          ),
+        ],
+      ),
+    );
   }
 }

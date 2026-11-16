@@ -17,7 +17,10 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
   Map<String, dynamic>? _paiementsData;
   String? _errorMessage;
   bool _dataChanged = false;
-  bool _isGestionnaire = false;
+  /// Gestionnaire ou administrateur : vue manager (filtre caissier).
+  bool _isManagerView = false;
+  /// Admin : dashboard société (sans idSite).
+  bool _isAdminSocieteView = false;
   bool _isLoadingCaissiers = false;
   List<Map<String, dynamic>> _caissiers = [];
   int? _selectedCaissierId;
@@ -31,7 +34,7 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
       context,
       MaterialPageRoute<bool>(
         builder: (context) => PaiementsScreen(
-          filterCaissierId: _isGestionnaire ? _selectedCaissierId : null,
+          filterCaissierId: _isManagerView ? _selectedCaissierId : null,
         ),
       ),
     );
@@ -45,9 +48,10 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
   void initState() {
     super.initState();
     final currentUser = locator.authRepository.currentUser;
-    _isGestionnaire =
-        currentUser?.role.toUpperCase() == 'GESTIONNAIRE';
-    if (_isGestionnaire) {
+    final role = currentUser?.role.toUpperCase().trim() ?? '';
+    _isAdminSocieteView = currentUser?.isAdministrateur == true;
+    _isManagerView = role == 'GESTIONNAIRE' || _isAdminSocieteView;
+    if (_isManagerView) {
       _loadCaissiers();
     }
     _loadPaiementsData();
@@ -64,7 +68,13 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
 
       final idSite = int.tryParse(currentUser.idSite) ?? 0;
       if (idSite == 0) {
-        throw Exception('Site invalide');
+        // Admin sans site opérationnel : pas de filtre caissier.
+        if (!mounted) return;
+        setState(() {
+          _caissiers = [];
+          _isLoadingCaissiers = false;
+        });
+        return;
       }
 
       final utilisateurs =
@@ -109,7 +119,7 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
     if (role.contains('caissier')) {
       return int.tryParse(currentUser.idUtilisateur);
     }
-    if (_isGestionnaire) {
+    if (_isManagerView) {
       return _selectedCaissierId;
     }
     return null;
@@ -135,12 +145,15 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
       }
 
       final idSociete = int.tryParse(currentUser.idSociete) ?? 0;
-      final idSite = int.tryParse(currentUser.idSite) ?? 0;
       final idUtilisateur = _resolveIdUtilisateur();
+      // Admin : vue société (sans idSite). Gestionnaire / caissier : site courant.
+      final int? idSite = _isAdminSocieteView
+          ? null
+          : (int.tryParse(currentUser.idSite) ?? 0);
 
       final data = await locator.apiService.getPaiementsDashboard(
         idSociete: idSociete,
-        idSite: idSite,
+        idSite: idSite == 0 ? null : idSite,
         idUtilisateur: idUtilisateur,
       );
 
@@ -179,7 +192,11 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
       child: Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text('Dashboard Paiements'),
+        title: Text(
+          _isAdminSocieteView
+              ? 'Dashboard Paiements (Société)'
+              : 'Dashboard Paiements',
+        ),
         centerTitle: true,
         backgroundColor: const Color(0xFF2C3E50),
         foregroundColor: Colors.white,
@@ -268,7 +285,7 @@ class _PaiementDashboardScreenState extends State<PaiementDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_isGestionnaire) ...[
+          if (_isManagerView) ...[
             _buildCaissierFilter(),
             const SizedBox(height: 16),
           ],
