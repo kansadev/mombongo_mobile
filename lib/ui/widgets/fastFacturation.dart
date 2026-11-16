@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mombongo/models/client.dart';
 import 'package:mombongo/services/cart_service.dart';
+import 'package:mombongo/utils/invoice_receipt_helper.dart';
 import 'package:mombongo/services/service_locator.dart';
 import 'package:mombongo/ui/screens/caissier/create_client_screen.dart';
 import 'package:mombongo/models/article_data.dart';
@@ -408,7 +409,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
         // We default to 0 (e.g. vente normale). Adjust if needed in the future.
         // use same defaults as sample request
         'typeTransaction': resolvedTypeTransaction,
-        'catalogueId': int.tryParse('0')?.toString(),
+        'catalogueId': 0,
         'lignesCommandes': cartService.items
             .map(
               (item) => {
@@ -433,7 +434,7 @@ class FastSaleBottomSheetState extends State<FastSaleBottomSheet> {
       if (mounted && context.mounted) {
         final invoice = InvoiceGenerator(
           context: context,
-          cartService: cartService,
+          items: snapshotCartItemsForReceipt(cartService),
           selectedClient: _selectedClient,
           saleResponse: response,
           invoiceNumber: result.reference.isNotEmpty

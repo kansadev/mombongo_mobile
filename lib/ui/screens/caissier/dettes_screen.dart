@@ -93,8 +93,9 @@ class _DettesScreenState extends State<DettesScreen> {
       final idSociete = int.tryParse(currentUser.idSociete) ?? 0;
       final idSite = int.tryParse(currentUser.idSite) ?? 0;
       final userRole = currentUser.role.toUpperCase();
-      final isGestionnaire = userRole == 'GESTIONNAIRE';
-      final idUtilisateur = isGestionnaire
+      final isManagerView = userRole == 'GESTIONNAIRE' ||
+          currentUser.isAdministrateur;
+      final idUtilisateur = isManagerView
           ? null
           : int.tryParse(currentUser.idUtilisateur);
 
@@ -192,8 +193,9 @@ class _DettesScreenState extends State<DettesScreen> {
       final idSociete = int.tryParse(currentUser.idSociete) ?? 0;
       final idSite = int.tryParse(currentUser.idSite) ?? 0;
       final userRole = currentUser.role.toUpperCase();
-      final isGestionnaire = userRole == 'GESTIONNAIRE';
-      final idUtilisateur = isGestionnaire
+      final isManagerView = userRole == 'GESTIONNAIRE' ||
+          currentUser.isAdministrateur;
+      final idUtilisateur = isManagerView
           ? null
           : int.tryParse(currentUser.idUtilisateur);
 

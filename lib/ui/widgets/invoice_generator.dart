@@ -1,19 +1,23 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:mombongo/utils/google_fonts_compat.dart';
-import 'package:mombongo/services/app_currency_preference.dart';
-import 'package:mombongo/services/service_locator.dart';
-import 'package:mombongo/services/cart_service.dart';
 import 'package:mombongo/models/client.dart';
 import 'package:mombongo/models/utilisateur.dart';
-import 'package:pdf/pdf.dart';
+import 'package:mombongo/services/app_currency_preference.dart';
+import 'package:mombongo/services/cart_service.dart';
+import 'package:mombongo/services/service_locator.dart';
+import 'package:mombongo/utils/receipt/receipt_paper.dart';
+import 'package:mombongo/utils/receipt/receipt_pdf_builder.dart';
+import 'package:mombongo/utils/receipt/receipt_print_dialog.dart';
 import 'package:pdf/widgets.dart' as pdf_lib;
-import 'package:printing/printing.dart';
-import 'dart:io' as io;
-import 'package:mombongo/utils/api_error_message.dart';
 
+/// Reçu de vente (panier) : utilisé par la vente rapide et l'écran de paiement.
+///
+/// Travaille sur une copie des lignes du panier ([items]) : le panier peut
+/// être vidé dès la vente enregistrée, le reçu reste imprimable ensuite.
 class InvoiceGenerator {
   final BuildContext context;
-  final CartService cartService;
+  final List<CartItem> items;
   final Client? selectedClient;
   final dynamic saleResponse;
   final String invoiceNumber;
@@ -21,156 +25,89 @@ class InvoiceGenerator {
 
   InvoiceGenerator({
     required this.context,
-    required this.cartService,
+    required this.items,
     required this.selectedClient,
     required this.saleResponse,
     required this.invoiceNumber,
     this.paidAmountOverride,
   });
 
-  Future<void> generateAndShow() async {
-    debugPrint('=== DEBUT GENERATION FACTURE ===');
+  /// Hauteur historique de la page des factures (mm).
+  static const double _pageHeightMm = 350;
 
-    showDialog(
+  /// Affiche le choix 58/80 mm puis imprime ou partage la facture.
+  Future<ReceiptOutcome> generateAndShow() {
+    return ReceiptPrintFlow.show(
       context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return const AlertDialog(
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 20),
-              Text('Génération de la facture...'),
-            ],
-          ),
-        );
-      },
+      title: 'Facture générée',
+      fileName: fileName,
+      buildPdf: _buildPdf,
     );
-
-    try {
-      final pdf = await _createInvoicePDF();
-
-      if (context.mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
-        await _showPrintOptionsDialog(pdf);
-      }
-    } catch (e) {
-      debugPrint('Erreur génération facture: $e');
-      if (context.mounted) {
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(apiErrorUserMessage(e)),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
-  Future<pdf_lib.Document> _createInvoicePDF() async {
-    final pdf = pdf_lib.Document();
+  /// Nom du fichier PDF de la facture.
+  String get fileName => 'facture_$invoiceNumber.pdf';
+
+  /// Génère le PDF au format demandé (utilisé pour l'impression directe).
+  Future<Uint8List> buildPdf(ReceiptPaperSize paper) => _buildPdf(paper);
+
+  Future<Uint8List> _buildPdf(ReceiptPaperSize paper) {
     final currentUser = locator.authRepository.currentUser;
+    final branding = ReceiptBranding.load();
 
-    pdf.addPage(
-      pdf_lib.MultiPage(
-        pageFormat: PdfPageFormat(
-          70 * PdfPageFormat.mm,
-          350 * PdfPageFormat.mm,
-          marginLeft: 8 * PdfPageFormat.mm,
-          marginRight: 8 * PdfPageFormat.mm,
-          marginTop: 8 * PdfPageFormat.mm,
-          marginBottom: 8 * PdfPageFormat.mm,
-        ),
-        build: (ctx) => [
-          pdf_lib.Column(
-            crossAxisAlignment: pdf_lib.CrossAxisAlignment.stretch,
-            children: [
-              _buildInvoiceHeader(currentUser),
-              _buildInvoiceInfo(currentUser),
-              _buildItemsTable(),
-              _buildInvoiceSummary(),
-              _buildPaymentInfo(),
-              _buildInvoiceFooter(),
-            ],
-          ),
-        ],
-      ),
+    return buildReceiptPdf(
+      paper: paper,
+      pageHeightMm: _pageHeightMm,
+      content: (spec) => [
+        _buildInvoiceHeader(currentUser, branding, spec),
+        _buildInvoiceInfo(currentUser),
+        _buildItemsTable(spec),
+        _buildInvoiceSummary(),
+        _buildPaymentInfo(),
+        _buildInvoiceFooter(branding),
+      ],
     );
-
-    return pdf;
   }
 
-  pdf_lib.Widget _buildInvoiceHeader(Utilisateur? user) {
+  String get _reference => saleResponse is Map
+      ? (saleResponse['referencePaiement'] ?? invoiceNumber).toString()
+      : invoiceNumber;
+
+  /// Montant réellement facturé (et envoyé à l'API).
+  /// Aucune TVA n'est calculée côté application : l'app n'est pas homologuée
+  /// DGI pour la facture normalisée, la TVA reste du ressort de l'API.
+  double get _total => _subtotal - _discount;
+
+  double get _subtotal =>
+      items.fold(0.0, (sum, item) => sum + item.unitPrice * item.quantity);
+
+  double get _discount =>
+      items.fold(0.0, (sum, item) => sum + item.totalDiscount);
+
+  pdf_lib.Widget _buildInvoiceHeader(
+    Utilisateur? user,
+    ReceiptBranding branding,
+    ReceiptPaperSpec spec,
+  ) {
     final companyName = user?.nomSociete ?? 'KANSA BUSINESS';
     final siteName = user?.nomSite ?? 'SIEGE PRINCIPAL';
     final address = user?.adresseSite ?? '';
     final phone = user?.contact ?? '';
 
-    // Charger le logo personnalisé du reçu depuis les préférences
-    String receiptLogoPath = '';
-    try {
-      receiptLogoPath = locator.databaseService.get<String>('pref_receipt_logo_path') ?? '';
-    } catch (e) {
-      debugPrint('Erreur lors du chargement du logo du reçu: $e');
-    }
-
     return pdf_lib.Column(
       crossAxisAlignment: pdf_lib.CrossAxisAlignment.center,
       children: [
-        // Afficher le logo personnalisé s'il existe
-        if (receiptLogoPath.isNotEmpty)
-          pdf_lib.Container(
-            height: 40,
-            margin: const pdf_lib.EdgeInsets.only(bottom: 5),
-            child: pdf_lib.Image(
-              pdf_lib.MemoryImage(io.File(receiptLogoPath).readAsBytesSync()),
-              fit: pdf_lib.BoxFit.contain,
-            ),
-          ),
-        pdf_lib.Center(
-          child: pdf_lib.Text(
-            companyName,
-            style: pdf_lib.TextStyle(
-              fontSize: 10,
-              fontWeight: pdf_lib.FontWeight.bold,
-            ),
-            textAlign: pdf_lib.TextAlign.center,
-          ),
-        ),
+        receiptLogo(branding, spec),
+        receiptCentered(companyName, size: 10, bold: true),
         pdf_lib.SizedBox(height: 3),
-        pdf_lib.Center(
-          child: pdf_lib.Text(
-            siteName,
-            style: pdf_lib.TextStyle(
-              fontSize: 9,
-              fontWeight: pdf_lib.FontWeight.bold,
-            ),
-            textAlign: pdf_lib.TextAlign.center,
-          ),
-        ),
+        receiptCentered(siteName, size: 9, bold: true),
         if (address.isNotEmpty) ...[
           pdf_lib.SizedBox(height: 3),
-          pdf_lib.Center(
-            child: pdf_lib.Text(
-              address,
-              style: pdf_lib.TextStyle(fontSize: 8),
-              textAlign: pdf_lib.TextAlign.center,
-            ),
-          ),
+          receiptCentered(address),
         ],
         if (phone.isNotEmpty) ...[
           pdf_lib.SizedBox(height: 3),
-          pdf_lib.Center(
-            child: pdf_lib.Text(
-              phone,
-              style: pdf_lib.TextStyle(fontSize: 8),
-              textAlign: pdf_lib.TextAlign.center,
-            ),
-          ),
+          receiptCentered(phone),
         ],
         pdf_lib.SizedBox(height: 5),
         pdf_lib.Center(child: pdf_lib.Divider()),
@@ -185,59 +122,21 @@ class InvoiceGenerator {
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
     final timeStr =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    final ref = saleResponse is Map
-        ? (saleResponse['referencePaiement'] ?? invoiceNumber)
-        : invoiceNumber;
     final agentName = user?.nomComplet ?? 'Agent';
+    final isOffline = saleResponse is Map && saleResponse['offline'] == true;
 
     return pdf_lib.Column(
       crossAxisAlignment: pdf_lib.CrossAxisAlignment.center,
       children: [
-        pdf_lib.Center(
-          child: pdf_lib.Text(
-            'Ref: $ref',
-            style: pdf_lib.TextStyle(
-              fontSize: 9,
-              fontWeight: pdf_lib.FontWeight.bold,
-            ),
-            textAlign: pdf_lib.TextAlign.center,
-          ),
-        ),
+        receiptCentered('Ref: $_reference', size: 9, bold: true),
         pdf_lib.SizedBox(height: 3),
-        pdf_lib.Center(
-          child: pdf_lib.Text(
-            'Date: $dateStr $timeStr',
-            style: pdf_lib.TextStyle(fontSize: 8),
-            textAlign: pdf_lib.TextAlign.center,
-          ),
-        ),
+        receiptCentered('Date: $dateStr $timeStr'),
         pdf_lib.SizedBox(height: 3),
-        pdf_lib.Center(
-          child: pdf_lib.Text(
-            'Agent: $agentName',
-            style: pdf_lib.TextStyle(fontSize: 8),
-            textAlign: pdf_lib.TextAlign.center,
-          ),
-        ),
-        if (saleResponse is Map && saleResponse['offline'] == true) ...[
+        receiptCentered('Agent: $agentName'),
+        if (isOffline) ...[
           pdf_lib.SizedBox(height: 4),
-          pdf_lib.Center(
-            child: pdf_lib.Text(
-              '*** VENTE HORS LIGNE ***',
-              style: pdf_lib.TextStyle(
-                fontSize: 8,
-                fontWeight: pdf_lib.FontWeight.bold,
-              ),
-              textAlign: pdf_lib.TextAlign.center,
-            ),
-          ),
-          pdf_lib.Center(
-            child: pdf_lib.Text(
-              'Synchronisation en attente',
-              style: pdf_lib.TextStyle(fontSize: 7),
-              textAlign: pdf_lib.TextAlign.center,
-            ),
-          ),
+          receiptCentered('*** VENTE HORS LIGNE ***', bold: true),
+          receiptCentered('Synchronisation en attente', size: 7),
         ],
         pdf_lib.SizedBox(height: 4),
         pdf_lib.Center(child: pdf_lib.Divider()),
@@ -246,103 +145,25 @@ class InvoiceGenerator {
     );
   }
 
-  pdf_lib.Widget _buildItemsTable() {
+  pdf_lib.Widget _buildItemsTable(ReceiptPaperSpec spec) {
     final tauxService = locator.tauxService;
 
     return pdf_lib.Column(
       crossAxisAlignment: pdf_lib.CrossAxisAlignment.start,
       children: [
-        pdf_lib.Text(
-          'DETAIL DES ARTICLES:',
-          style: pdf_lib.TextStyle(
-            fontSize: 9,
-            fontWeight: pdf_lib.FontWeight.bold,
-          ),
-          textAlign: pdf_lib.TextAlign.left,
-        ),
+        receiptText('DETAIL DES ARTICLES:', size: 9, bold: true),
         pdf_lib.SizedBox(height: 4),
-        pdf_lib.Table(
-          border: pdf_lib.TableBorder.all(color: PdfColors.grey400, width: 0.5),
-          columnWidths: {
-            0: const pdf_lib.FlexColumnWidth(3),
-            1: const pdf_lib.FixedColumnWidth(20),
-            2: const pdf_lib.FixedColumnWidth(35),
-          },
-          children: [
-            pdf_lib.TableRow(
-              decoration: const pdf_lib.BoxDecoration(color: PdfColors.grey200),
-              children: [
-                pdf_lib.Padding(
-                  padding: const pdf_lib.EdgeInsets.all(2),
-                  child: pdf_lib.Text(
-                    'Article',
-                    style: pdf_lib.TextStyle(
-                      fontSize: 8,
-                      fontWeight: pdf_lib.FontWeight.bold,
-                    ),
-                    textAlign: pdf_lib.TextAlign.left,
-                  ),
+        receiptItemsTable(
+          spec: spec,
+          rows: items
+              .map(
+                (item) => ReceiptItemRow(
+                  name: item.article.libelle,
+                  quantity: item.quantity.toString(),
+                  amount: tauxService.formatPrice(item.totalPrice),
                 ),
-                pdf_lib.Padding(
-                  padding: const pdf_lib.EdgeInsets.all(2),
-                  child: pdf_lib.Text(
-                    'Qte',
-                    style: pdf_lib.TextStyle(
-                      fontSize: 8,
-                      fontWeight: pdf_lib.FontWeight.bold,
-                    ),
-                    textAlign: pdf_lib.TextAlign.center,
-                  ),
-                ),
-                pdf_lib.Padding(
-                  padding: const pdf_lib.EdgeInsets.all(2),
-                  child: pdf_lib.Text(
-                    'Prix',
-                    style: pdf_lib.TextStyle(
-                      fontSize: 8,
-                      fontWeight: pdf_lib.FontWeight.bold,
-                    ),
-                    textAlign: pdf_lib.TextAlign.right,
-                  ),
-                ),
-              ],
-            ),
-            ...cartService.items.map((item) {
-              final articleName = item.article.libelle;
-              final qty = item.quantity.toString();
-              final price = tauxService.formatPrice(item.totalPrice);
-
-              return pdf_lib.TableRow(
-                children: [
-                  pdf_lib.Padding(
-                    padding: const pdf_lib.EdgeInsets.all(2),
-                    child: pdf_lib.Text(
-                      articleName,
-                      style: pdf_lib.TextStyle(fontSize: 8),
-                      textAlign: pdf_lib.TextAlign.left,
-                      maxLines: 2,
-                    ),
-                  ),
-                  pdf_lib.Padding(
-                    padding: const pdf_lib.EdgeInsets.all(2),
-                    child: pdf_lib.Text(
-                      qty,
-                      style: pdf_lib.TextStyle(fontSize: 8),
-                      textAlign: pdf_lib.TextAlign.center,
-                    ),
-                  ),
-                  pdf_lib.Padding(
-                    padding: const pdf_lib.EdgeInsets.all(2),
-                    child: pdf_lib.Text(
-                      price,
-                      style: pdf_lib.TextStyle(fontSize: 8),
-                      textAlign: pdf_lib.TextAlign.right,
-                    ),
-                  ),
-                ],
-              );
-            }),
-          ],
+              )
+              .toList(),
         ),
         pdf_lib.SizedBox(height: 5),
       ],
@@ -350,68 +171,34 @@ class InvoiceGenerator {
   }
 
   pdf_lib.Widget _buildInvoiceSummary() {
-    // we use the rate-aware helper so that totals are converted properly
-    // when the user has chosen CDF.
-    final subtotal = cartService.subtotal;
-    final tvaAmount = cartService.items.fold(0.0, (sum, item) {
-      final itemHT = item.totalHT;
-      final tva = item.article.tva;
-      return sum + (itemHT * tva / 100);
-    });
-    final totalTTC = subtotal + tvaAmount;
+    final discount = _discount;
 
     return pdf_lib.Column(
       crossAxisAlignment: pdf_lib.CrossAxisAlignment.start,
       children: [
-        pdf_lib.Text(
-          'TOTAUX:',
-          style: pdf_lib.TextStyle(
-            fontSize: 9,
-            fontWeight: pdf_lib.FontWeight.bold,
-          ),
-          textAlign: pdf_lib.TextAlign.left,
-        ),
+        receiptText('TOTAUX:', size: 9, bold: true),
         pdf_lib.SizedBox(height: 4),
-        pdf_lib.Row(
-          mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-          children: [
-            pdf_lib.Text('HT:', style: pdf_lib.TextStyle(fontSize: 8)),
-            pdf_lib.Text(
-              AppCurrencyPreference.formatCurrency(subtotal),
-              style: pdf_lib.TextStyle(fontSize: 8),
-            ),
-          ],
-        ),
-        pdf_lib.SizedBox(height: 3),
-        pdf_lib.Row(
-          mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-          children: [
-            pdf_lib.Text('TVA:', style: pdf_lib.TextStyle(fontSize: 8)),
-            pdf_lib.Text(
-              AppCurrencyPreference.formatCurrency(tvaAmount),
-              style: pdf_lib.TextStyle(fontSize: 8),
-            ),
-          ],
-        ),
-        pdf_lib.SizedBox(height: 3),
-        pdf_lib.Row(
-          mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-          children: [
-            pdf_lib.Text(
-              'TOTAL:',
-              style: pdf_lib.TextStyle(
-                fontSize: 10,
-                fontWeight: pdf_lib.FontWeight.bold,
-              ),
-            ),
-            pdf_lib.Text(
-              AppCurrencyPreference.formatCurrency(totalTTC),
-              style: pdf_lib.TextStyle(
-                fontSize: 10,
-                fontWeight: pdf_lib.FontWeight.bold,
-              ),
-            ),
-          ],
+        // Remise affichée uniquement si une remise a été appliquée.
+        if (discount > 0) ...[
+          receiptRow(
+            'Sous-total:',
+            AppCurrencyPreference.formatCurrency(_subtotal),
+            size: 8,
+          ),
+          pdf_lib.SizedBox(height: 3),
+          receiptRow(
+            'Remise:',
+            '-${AppCurrencyPreference.formatCurrency(discount)}',
+            size: 8,
+          ),
+          pdf_lib.SizedBox(height: 3),
+        ],
+        receiptRow(
+          'TOTAL:',
+          AppCurrencyPreference.formatCurrency(_total),
+          size: 10,
+          boldLabel: true,
+          boldValue: true,
         ),
         pdf_lib.SizedBox(height: 5),
         pdf_lib.Divider(),
@@ -424,174 +211,66 @@ class InvoiceGenerator {
     final paymentMethod = saleResponse is Map
         ? (saleResponse['modePaiement'] ?? 'Espèces').toString()
         : 'Espèces';
-    // Use paidAmountOverride if provided, otherwise try to get from saleResponse
     final double paidAmount;
     if (paidAmountOverride != null) {
       paidAmount = paidAmountOverride!;
     } else {
       paidAmount = saleResponse is Map
-          ? (saleResponse['montant'] as num? ?? cartService.total).toDouble()
-          : cartService.total;
+          ? (saleResponse['montant'] as num? ?? _total).toDouble()
+          : _total;
     }
 
-    // Use the same total as displayed in the invoice summary (with TVA)
-    final tauxService = locator.tauxService;
-    final subtotal = cartService.subtotal;
-    final tvaAmount = cartService.items.fold(0.0, (sum, item) {
-      final itemHT = item.totalHT;
-      final tva = item.article.tva;
-      return sum + (itemHT * tva / 100);
-    });
-    final totalAmount = subtotal + tvaAmount;
-    final remaining = (totalAmount - paidAmount).clamp(0.0, double.infinity);
-    final ref = saleResponse is Map
-        ? (saleResponse['referencePaiement'] ?? invoiceNumber)
-        : invoiceNumber;
+    final remaining = (_total - paidAmount).clamp(0.0, double.infinity);
     final typeTransaction = saleResponse is Map
         ? (saleResponse['typeTransaction'] ?? 'Complete').toString()
         : 'Complete';
 
-    final clientName = selectedClient != null
-        ? '${selectedClient!.prenom} ${selectedClient!.nom}'.trim()
+    final client = selectedClient;
+    final clientName = client != null
+        ? '${client.prenom} ${client.nom}'.trim()
         : '';
-    final clientPhone = selectedClient?.telephone ?? '';
-    final clientEmail = selectedClient?.email ?? '';
+    final clientPhone = client?.telephone ?? '';
+    final clientEmail = client?.email ?? '';
 
     return pdf_lib.Column(
       crossAxisAlignment: pdf_lib.CrossAxisAlignment.start,
       children: [
         if (clientName.isNotEmpty) ...[
-          pdf_lib.Text(
-            'CLIENT:',
-            style: pdf_lib.TextStyle(
-              fontSize: 8,
-              fontWeight: pdf_lib.FontWeight.bold,
-            ),
-            textAlign: pdf_lib.TextAlign.left,
-          ),
+          receiptText('CLIENT:', bold: true),
           pdf_lib.SizedBox(height: 3),
-          pdf_lib.Row(
-            mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-            children: [
-              pdf_lib.Text('Nom:', style: pdf_lib.TextStyle(fontSize: 7)),
-              pdf_lib.Text(
-                clientName,
-                style: pdf_lib.TextStyle(
-                  fontSize: 7,
-                  fontWeight: pdf_lib.FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
+          receiptRow('Nom:', clientName, boldValue: true),
           if (clientPhone.isNotEmpty) ...[
             pdf_lib.SizedBox(height: 2),
-            pdf_lib.Row(
-              mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-              children: [
-                pdf_lib.Text('Tel:', style: pdf_lib.TextStyle(fontSize: 7)),
-                pdf_lib.Text(
-                  clientPhone,
-                  style: pdf_lib.TextStyle(fontSize: 7),
-                ),
-              ],
-            ),
+            receiptRow('Tel:', clientPhone),
           ],
           if (clientEmail.isNotEmpty) ...[
             pdf_lib.SizedBox(height: 2),
-            pdf_lib.Row(
-              mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-              children: [
-                pdf_lib.Text('Email:', style: pdf_lib.TextStyle(fontSize: 7)),
-                pdf_lib.Text(
-                  clientEmail,
-                  style: pdf_lib.TextStyle(fontSize: 7),
-                ),
-              ],
-            ),
+            receiptRow('Email:', clientEmail),
           ],
           pdf_lib.SizedBox(height: 4),
         ],
-        pdf_lib.Text(
-          'PAIEMENT:',
-          style: pdf_lib.TextStyle(
-            fontSize: 8,
-            fontWeight: pdf_lib.FontWeight.bold,
-          ),
-          textAlign: pdf_lib.TextAlign.left,
-        ),
+        receiptText('PAIEMENT:', bold: true),
         pdf_lib.SizedBox(height: 3),
-        pdf_lib.Row(
-          mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-          children: [
-            pdf_lib.Text('Mode:', style: pdf_lib.TextStyle(fontSize: 7)),
-            pdf_lib.Text(
-              paymentMethod,
-              style: pdf_lib.TextStyle(
-                fontSize: 7,
-                fontWeight: pdf_lib.FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
+        receiptRow('Mode:', paymentMethod, boldValue: true),
         pdf_lib.SizedBox(height: 2),
-        pdf_lib.Row(
-          mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-          children: [
-            pdf_lib.Text(
-              'Type de Transaction:',
-              style: pdf_lib.TextStyle(fontSize: 7),
-            ),
-            pdf_lib.Text(
-              typeTransaction,
-              style: pdf_lib.TextStyle(
-                fontSize: 7,
-                fontWeight: pdf_lib.FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-
+        receiptRow('Type de Transaction:', typeTransaction, boldValue: true),
         pdf_lib.SizedBox(height: 2),
-        pdf_lib.Row(
-          mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-          children: [
-            pdf_lib.Text(
-              'Montant payé:',
-              style: pdf_lib.TextStyle(fontSize: 7),
-            ),
-            pdf_lib.Text(
-              tauxService.formatPrice(paidAmount),
-              style: pdf_lib.TextStyle(
-                fontSize: 7,
-                fontWeight: pdf_lib.FontWeight.bold,
-              ),
-            ),
-          ],
+        receiptRow(
+          'Montant payé:',
+          AppCurrencyPreference.formatCurrency(paidAmount),
+          boldValue: true,
         ),
         if (remaining > 0) ...[
           pdf_lib.SizedBox(height: 2),
-          pdf_lib.Row(
-            mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-            children: [
-              pdf_lib.Text('Reste dû:', style: pdf_lib.TextStyle(fontSize: 7)),
-              pdf_lib.Text(
-                '${AppCurrencyPreference.symbolFor(AppCurrencyPreference.readCode(locator.databaseService))}${AppCurrencyPreference.formatterFor(AppCurrencyPreference.readCode(locator.databaseService)).format(remaining)}',
-                style: pdf_lib.TextStyle(
-                  fontSize: 7,
-                  fontWeight: pdf_lib.FontWeight.bold,
-                ),
-              ),
-            ],
+          // Même conversion de devise que les autres montants du reçu.
+          receiptRow(
+            'Reste dû:',
+            AppCurrencyPreference.formatCurrency(remaining),
+            boldValue: true,
           ),
         ],
         pdf_lib.SizedBox(height: 2),
-        pdf_lib.Row(
-          mainAxisAlignment: pdf_lib.MainAxisAlignment.spaceBetween,
-          children: [
-            pdf_lib.Text('Ref:', style: pdf_lib.TextStyle(fontSize: 7)),
-            pdf_lib.Text(ref, style: pdf_lib.TextStyle(fontSize: 7)),
-          ],
-        ),
+        receiptRow('Ref:', _reference),
         pdf_lib.SizedBox(height: 4),
         pdf_lib.Divider(),
         pdf_lib.SizedBox(height: 3),
@@ -599,222 +278,14 @@ class InvoiceGenerator {
     );
   }
 
-  pdf_lib.Widget _buildInvoiceFooter() {
-    // Charger le message personnalisé du pied de reçu depuis les préférences
-    String receiptFooterMessage = '';
-    try {
-      receiptFooterMessage = locator.databaseService.get<String>('pref_receipt_footer_message') ?? '';
-    } catch (e) {
-      debugPrint('Erreur lors du chargement du message du pied de reçu: $e');
-    }
-
+  pdf_lib.Widget _buildInvoiceFooter(ReceiptBranding branding) {
     return pdf_lib.Column(
       crossAxisAlignment: pdf_lib.CrossAxisAlignment.center,
       children: [
         pdf_lib.SizedBox(height: 3),
-        pdf_lib.Center(
-          child: pdf_lib.Text(
-            'MERCI DE VOTRE CONFIANCE !',
-            style: pdf_lib.TextStyle(
-              fontSize: 8,
-              fontWeight: pdf_lib.FontWeight.bold,
-            ),
-            textAlign: pdf_lib.TextAlign.center,
-          ),
-        ),
-        // Afficher le message personnalisé s'il existe
-        if (receiptFooterMessage.isNotEmpty) ...[
-          pdf_lib.SizedBox(height: 6),
-          pdf_lib.Center(
-            child: pdf_lib.Text(
-              receiptFooterMessage,
-              style: pdf_lib.TextStyle(
-                fontSize: 6,
-                fontStyle: pdf_lib.FontStyle.italic,
-              ),
-              textAlign: pdf_lib.TextAlign.center,
-            ),
-          ),
-        ],
+        ...receiptThanksFooter(branding),
         pdf_lib.SizedBox(height: 6),
-        
       ],
     );
-  }
-
-  Future<void> _showPrintOptionsDialog(pdf_lib.Document pdf) async {
-    if (!context.mounted) return;
-
-    return showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (BuildContext dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.receipt_long,
-                    size: 32,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Facture générée',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Que souhaitez-vous faire ?',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          Navigator.of(dialogContext).pop();
-                          if (context.mounted) {
-                            await _savePdfToFile(pdf);
-                          }
-                        },
-                        icon: const Icon(Icons.save_outlined),
-                        label: Text(
-                          'Sauvegarder',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: BorderSide(
-                            color: Theme.of(context).colorScheme.primary,
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          Navigator.of(dialogContext).pop();
-                          if (context.mounted) {
-                            await _printPdf(pdf);
-                          }
-                        },
-                        icon: const Icon(Icons.print_outlined),
-                        label: Text(
-                          'Imprimer',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: Theme.of(
-                            context,
-                          ).colorScheme.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 2,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _savePdfToFile(pdf_lib.Document pdf) async {
-    try {
-      final bytes = await pdf.save();
-      await Printing.layoutPdf(onLayout: (_) => bytes);
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Facture enregistrée avec succès'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(apiErrorUserMessage(e)),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _printPdf(pdf_lib.Document pdf) async {
-    try {
-      final bytes = await pdf.save();
-      await Printing.layoutPdf(onLayout: (_) => bytes, dynamicLayout: false);
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Impression envoyée'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(apiErrorUserMessage(e)),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 }

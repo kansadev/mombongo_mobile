@@ -122,19 +122,20 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
       final idUser = int.tryParse(currentUser.idUtilisateur) ?? 0;
       final idSite = int.tryParse(currentUser.idSite) ?? 0;
       final userRole = currentUser.role.toUpperCase();
-      final isGestionnaire = userRole == 'GESTIONNAIRE';
+      final isManagerView =
+          userRole == 'GESTIONNAIRE' || currentUser.isAdministrateur;
 
       final nextPage = _currentPage + 1;
 
       final Map<String, dynamic> apiResponse;
       final filterCaissierId = widget.filterCaissierId;
-      if (isGestionnaire && filterCaissierId != null) {
+      if (isManagerView && filterCaissierId != null) {
         apiResponse = await locator.apiService.getPaiementsByCaissier(
           filterCaissierId,
           pageNumber: nextPage,
           pageSize: _pageSize,
         );
-      } else if (isGestionnaire) {
+      } else if (isManagerView) {
         if (idSite == 0) throw Exception('Site invalide');
         apiResponse = await locator.apiService.getPaiementsBySite(
           idSite,
@@ -207,16 +208,17 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
       }
 
       final userRole = currentUser.role.toUpperCase();
-      final isGestionnaire = userRole == 'GESTIONNAIRE';
+      final isManagerView =
+          userRole == 'GESTIONNAIRE' || currentUser.isAdministrateur;
       final idUser = int.tryParse(currentUser.idUtilisateur) ?? 0;
       final idSite = int.tryParse(currentUser.idSite) ?? 0;
 
       List<dynamic> allPaiements;
       final filterCaissierId = widget.filterCaissierId;
-      if (isGestionnaire && filterCaissierId != null) {
+      if (isManagerView && filterCaissierId != null) {
         _serverPagination = true;
         debugPrint(
-          'Loading Paiements by caissier for gestionnaire: $filterCaissierId (page 1)',
+          'Loading Paiements by caissier for manager: $filterCaissierId (page 1)',
         );
         _currentPage = 1;
         _totalPages = 1;
@@ -239,12 +241,12 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
         final hasNext = apiResponse['hasNextPage'];
         _hasMorePages = hasNext is bool ? hasNext : _currentPage < _totalPages;
         _currentPage = _parsePaginationInt(apiResponse['pageNumber'], 1);
-      } else if (isGestionnaire) {
+      } else if (isManagerView) {
         if (idSite == 0) {
           throw Exception('Site invalide : impossible de charger les paiements');
         }
         _serverPagination = true;
-        debugPrint('Loading Paiements by site for gestionnaire: $idSite (page 1)');
+        debugPrint('Loading Paiements by site for manager: $idSite (page 1)');
         _currentPage = 1;
         _totalPages = 1;
         _hasMorePages = true;

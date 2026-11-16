@@ -6,6 +6,10 @@ import '../profil_screen.dart';
 import '../gestionnaire/caissier_performance_screen.dart';
 import '../gestionnaire/clients_site_screen.dart';
 import '../gestionnaire/utilisateurs_screen.dart';
+import '../caissier/dettes_screen.dart';
+import '../caissier/paiements_screen.dart';
+import '../finance/paiement_dashboard_screen.dart';
+import '../charge/site_charges_screen.dart';
 import 'admin_dashboard_screen.dart';
 import '../login_screen.dart';
 import 'package:intl/intl.dart';
@@ -231,13 +235,69 @@ class _AdminScreenState extends State<AdminScreen> {
             _buildDrawerItem(
               context: context,
               icon: Icons.people_outline,
-              title: 'Clients du jour',
+              title: 'Clients',
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => const ClientsSiteScreen(),
+                  ),
+                );
+              },
+            ),
+            _buildDrawerItem(
+              context: context,
+              icon: Icons.account_balance_wallet,
+              title: 'Dettes & acomptes',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const DettesScreen(),
+                  ),
+                );
+              },
+            ),
+            _buildDrawerItem(
+              context: context,
+              icon: Icons.dashboard_customize,
+              title: 'Dashboard Paiements',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PaiementDashboardScreen(),
+                  ),
+                );
+              },
+            ),
+            _buildDrawerItem(
+              context: context,
+              icon: Icons.payment,
+              title: 'Historique paiements',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PaiementsScreen(),
+                  ),
+                );
+              },
+            ),
+            _buildDrawerItem(
+              context: context,
+              icon: Icons.receipt_long,
+              title: 'Charges du site',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SiteChargesScreen(),
                   ),
                 );
               },
@@ -465,6 +525,47 @@ class _AdminScreenState extends State<AdminScreen> {
                             },
                           ),
                           _buildActionCard(
+                            title: 'Dashboard Paiements',
+                            icon: Icons.dashboard_customize,
+                            color: const Color(0xFF059669),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const PaiementDashboardScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionCard(
+                            title: 'Clients',
+                            icon: Icons.people_outline,
+                            color: const Color(0xFF8B5CF6),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const ClientsSiteScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionCard(
+                            title: 'Dettes & acomptes',
+                            icon: Icons.account_balance_wallet,
+                            color: const Color(0xFFDC2626),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const DettesScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionCard(
                             title: 'Points de Vente',
                             icon: Icons.store,
                             color: Colors.green,
@@ -502,6 +603,20 @@ class _AdminScreenState extends State<AdminScreen> {
                                 MaterialPageRoute(
                                   builder: (context) =>
                                       const CaissierPerformanceScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildActionCard(
+                            title: 'Charges du site',
+                            icon: Icons.receipt_long,
+                            color: const Color(0xFFF59E0B),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const SiteChargesScreen(),
                                 ),
                               );
                             },
